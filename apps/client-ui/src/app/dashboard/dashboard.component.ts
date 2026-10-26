@@ -28,6 +28,7 @@ import {
   computed,
   effect,
   inject,
+  linkedSignal,
   signal,
   untracked,
 } from '@angular/core';
@@ -78,8 +79,9 @@ import { TickAnimations } from './shared/tick-animations';
 import { TimeframeToggleComponent } from './shared/timeframe-toggle.component';
 import { DashboardTourComponent, TourExit } from './tour/dashboard-tour.component';
 import { TourProgressService } from './tour/tour-progress.service';
+import { DuaEmptyComponent } from '../dua/dua-empty.component';
 
-type HeaderDropdown = 'account' | 'market-clock' | 'profile';
+type HeaderDropdown = 'account' | 'profile';
 
 // The account or cash dialog currently open over the dashboard, if any. An account dialog
 // with an account renames it; without one it creates a new, empty account.
@@ -93,6 +95,7 @@ type AccountDialog =
   imports: [
     ThemeToggleComponent,
     DuaComponent,
+    DuaEmptyComponent,
     OrderEditorComponent,
     ActivityRowComponent,
     ActivityRowSkeletonComponent,
@@ -333,6 +336,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
     const symbol = this.orderSymbol();
     return symbol ? (findInstrument(symbol, this.instruments()) ?? null) : null;
   });
+  // The stock Dua's This Stock choice reviews: the order dialog's, following its search.
+  protected readonly duaSymbol = linkedSignal(() => this.orderSymbol() ?? '');
 
   // The selected account's portfolio.
   protected readonly holdings = computed(() =>
@@ -569,7 +574,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     const target = event.target;
     if (
       target instanceof Element &&
-      target.closest('app-dashboard-header-dropdown, app-market-clock-control, app-account-control')
+      target.closest('app-dashboard-header-dropdown, app-account-control')
     ) {
       return;
     }

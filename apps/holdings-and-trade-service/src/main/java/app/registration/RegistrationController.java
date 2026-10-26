@@ -60,14 +60,14 @@ public class RegistrationController {
     }
 
     /**
-     * Reports whether a business account is registered with the email. Does not
-     * require a token.
+     * Reports whether a business account is registered with the email. Requires a
+     * token, so it cannot be used to probe which emails hold accounts.
      *
      * @param request the email to check
      * @return whether an account exists
      */
     @PostMapping("/account-exists")
-    @Operation(summary = "Check if account exists", description = "Verifies whether a business account is registered with the given email (no authentication required)")
+    @Operation(summary = "Check if account exists", description = "Verifies whether a business account is registered with the given email (authenticated callers only)")
     public AccountExistsResponse accountExists(@Valid @RequestBody AccountExistsRequest request) {
         return new AccountExistsResponse(registrationService.accountExists(request.email()));
     }

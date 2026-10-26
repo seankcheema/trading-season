@@ -35,6 +35,8 @@ import { HlmInputImports } from '@shared/ui-components/input';
 import { toAuthErrorMessage } from '../core/auth/auth-error';
 import { AuthService } from '../core/auth/auth.service';
 import { ThemeToggleComponent } from '../core/theme/theme-toggle.component';
+import { DuaMood } from '../dua/dua-figure.component';
+import { DuaPeekComponent, secretFieldOf } from '../dua/dua-peek.component';
 
 const SPECIAL_CHARACTER_PATTERN = /[^A-Za-z0-9]/;
 const NUMBER_PATTERN = /\d/;
@@ -74,6 +76,7 @@ export function minimumAgeValidator(minimumAge: number, today = new Date()): Val
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    DuaPeekComponent,
     ThemeToggleComponent,
     ReactiveFormsModule,
     RouterLink,
@@ -113,6 +116,22 @@ export class RegisterComponent {
   protected readonly loading = signal(false);
   // Message from the last failed registration, cleared as soon as the user edits the form.
   protected readonly errorMessage = signal<string | null>(null);
+  // The masked field focus is in, if any: Dua peeking over the form covers its eyes while one
+  // is typed and peeks once it is shown.
+  protected readonly secretField = signal<string | null>(null);
+  protected readonly secretFieldOf = secretFieldOf;
+  protected readonly duaMood = computed<DuaMood>(() => {
+    const shown: Record<string, boolean> = {
+      ssn: this.showSsn(),
+      password: this.showPassword(),
+      confirmPassword: this.showConfirmPassword(),
+    };
+    const field = this.secretField();
+    if (field && field in shown) {
+      return shown[field] ? 'peek' : 'shy';
+    }
+    return this.errorMessage() ? 'worried' : 'happy';
+  });
 
   protected readonly traderLevels = ['BEGINNER', 'INTERMEDIATE', 'ADVANCED'] as const;
   protected readonly minimumAvailableFunds = MINIMUM_AVAILABLE_FUNDS;

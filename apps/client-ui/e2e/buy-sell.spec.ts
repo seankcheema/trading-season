@@ -36,5 +36,5 @@ test('buy and sell submit replay time and refresh the account', async ({ page, l
   await expect(cashBefore).toHaveText('$5,000.00');
   await expect(dialog.getByRole('button', { name: /^Sell \d+ AAPL$/ })).toBeDisabled();
   await expect(dialog.getByText('No shares held', { exact: true })).toBeVisible();
-  await expect(page.locator('hlm-toaster .toast')).toContainText('Filled 2 AAPL');
+  await expect(page.getByTestId('dua-bubble')).toContainText('Filled 2 AAPL');
 });

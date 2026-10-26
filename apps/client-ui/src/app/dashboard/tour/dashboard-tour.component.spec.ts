@@ -112,7 +112,7 @@ describe('DashboardTourComponent', () => {
     expect(dialog().getAttribute('aria-modal')).toBe('true');
     expect(element().querySelector(`#${dialog().getAttribute('aria-labelledby')}`)).not.toBeNull();
     expect(dialog().getAttribute('aria-describedby')).toBeTruthy();
-    expect(title()).toBe('Welcome to TradingSeason');
+    expect(title()).toBe("Hi, I'm Dua");
     expect(progress()).toBe('Quick tour');
     expect(spotlight()).toBeNull();
     expect(button('Skip')).toBeDefined();
@@ -146,11 +146,25 @@ describe('DashboardTourComponent', () => {
     expect(title()).toBe('Every trade starts with a search');
   });
 
+  it('is narrated by Dua, whose face shows on every step', async () => {
+    await render();
+    const guide = () => element().querySelector('[data-testid="tour-guide"]');
+    const avatars = () => element().querySelectorAll('[data-testid="tour-avatar"]');
+
+    expect(avatars()).toHaveLength(1);
+    expect(guide()).toBeNull();
+
+    await click('Start tour');
+    expect(guide()?.textContent?.trim()).toBe('Dua');
+    expect(avatars()).toHaveLength(1);
+    expect(avatars()[0].getAttribute('aria-hidden')).toBe('true');
+  });
+
   it('moves with the arrow keys and ignores them with a modifier', async () => {
     await render();
 
     await press('a');
-    expect(title()).toBe('Welcome to TradingSeason');
+    expect(title()).toBe("Hi, I'm Dua");
 
     await press('ArrowRight');
     await press('ArrowRight');
@@ -164,7 +178,7 @@ describe('DashboardTourComponent', () => {
 
     await press('ArrowLeft');
     await press('ArrowLeft');
-    expect(title()).toBe('Welcome to TradingSeason');
+    expect(title()).toBe("Hi, I'm Dua");
   });
 
   it('ends on Escape, the close button or Skip, and does not show by itself again', async () => {
@@ -190,7 +204,7 @@ describe('DashboardTourComponent', () => {
     expect(spotlight()).not.toBeNull();
 
     await click('Next');
-    expect(title()).toBe('Meet Dua');
+    expect(title()).toBe("You'll find me here");
     expect(fixture.componentInstance.tickets).toEqual([true, false]);
     expect(TOUR_STEPS[7].target).toBe('dua');
 

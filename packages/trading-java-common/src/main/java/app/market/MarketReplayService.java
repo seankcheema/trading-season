@@ -26,12 +26,22 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 import static app.market.MarketResponses.*;
 
-/** Maintains shared simulation cursors and publishes bounded market-data responses. */
+/**
+ * Maintains shared simulation cursors and publishes bounded market-data responses.
+ *
+ * <p>The cursor walks the seeded one-second frames of a trading day, then keeps
+ * running past the close: each tick after the last frame advances the simulated
+ * time by one second with prices held at the close and the market reported
+ * {@code CLOSED}, until {@link #DAY_END} America/Chicago, when it jumps to the
+ * next seeded day's open (wrapping after the last day).
+ */
 @Service
 public class MarketReplayService {
     private static final ZoneId MARKET_ZONE = ZoneId.of("America/Chicago");
     private static final LocalTime MARKET_OPEN = LocalTime.of(8, 30);
     private static final LocalTime MARKET_CLOSE = LocalTime.of(14, 59, 59);
+    /** The last simulated second of a day; the cursor rolls to the next day's open after it. */
+    public static final LocalTime DAY_END = LocalTime.of(23, 59, 59);
     private static final int EVENT_HISTORY = 30;
     private static final int MAX_POINTS = 500;
 
@@ -78,10 +88,10 @@ public class MarketReplayService {
                 BigDecimal percent = open.signum() == 0 ? BigDecimal.ZERO
                         : change.multiply(BigDecimal.valueOf(100)).divide(open, 4, RoundingMode.HALF_UP);
                 return new StockSnapshot(tick.symbol(), names.getOrDefault(tick.symbol(), tick.symbol()),
-                        tick.price(), change, percent, tick.timestamp());
+                        tick.price(), change, percent, state.closed() ? state.cursor() : tick.timestamp());
             }).toList();
-            return new Snapshot(state.session.id(), "OPEN", frame.timestamp(), clock.instant(),
-                    availability(state), stocks);
+            return new Snapshot(state.session.id(), state.closed() ? "CLOSED" : "OPEN", state.cursor(),
+                    clock.instant(), availability(state), stocks);
         }
     }
 
@@ -150,6 +160,7 @@ public class MarketReplayService {
             state.dayIndex = dayIndex;
             state.frames = frames;
             state.frameIndex = frameIndex;
+            state.afterCloseSeconds = afterClose(frames, frameIndex, replayTimestamp);
             state.opening = null;
             state.history.clear();
         }
@@ -227,15 +238,20 @@ public class MarketReplayService {
     private void advanceState(ReplayState state) {
         TickEvent event;
         synchronized (state) {
-            if (++state.frameIndex >= state.frames.size()) {
+            if (state.frameIndex + 1 < state.frames.size()) {
+                state.frameIndex++;
+            } else if (state.cursor().isBefore(dayEnd(state.days.get(state.dayIndex)))) {
+                state.afterCloseSeconds++;
+            } else {
                 state.dayIndex = (state.dayIndex + 1) % state.days.size();
                 state.frames = requireFrames(state.session, state.days.get(state.dayIndex));
                 state.frameIndex = 0;
+                state.afterCloseSeconds = 0;
                 state.opening = null;
             }
             MarketModels.Frame frame = state.currentFrame();
             long id = ++state.nextEventId;
-            event = new TickEvent(id, frame.timestamp(), clock.instant(), frame.prices().stream()
+            event = new TickEvent(id, state.cursor(), clock.instant(), frame.prices().stream()
                     .map(t -> new TickPrice(t.symbol(), t.price(), t.sequenceNumber())).toList());
             state.history.addLast(event);
             while (state.history.size() > EVENT_HISTORY) state.history.removeFirst();
@@ -304,8 +320,19 @@ public class MarketReplayService {
         LocalDate last = state.days.getLast();
         return new CalendarAvailability(MARKET_ZONE.getId(),
                 first.atTime(MARKET_OPEN).atZone(MARKET_ZONE).toInstant(),
-                last.atTime(MARKET_CLOSE).atZone(MARKET_ZONE).toInstant(),
+                dayEnd(last),
                 state.days);
+    }
+
+    private static Instant dayEnd(LocalDate day) {
+        return day.atTime(DAY_END).atZone(MARKET_ZONE).toInstant();
+    }
+
+    /** Seconds past the day's last frame for a requested time after it. The requested time is
+     * already on the chosen day, so it never passes {@link #DAY_END}. */
+    private static long afterClose(List<MarketModels.Frame> frames, int frameIndex, Instant requested) {
+        if (frameIndex < frames.size() - 1) return 0;
+        return Math.max(0, java.time.Duration.between(frames.get(frameIndex).timestamp(), requested).getSeconds());
     }
 
     private List<CandlePoint> aggregate(List<MarketModels.Candle> raw, MarketTimeframe timeframe) {
@@ -361,6 +388,8 @@ public class MarketReplayService {
         int dayIndex;
         List<MarketModels.Frame> frames;
         int frameIndex;
+        /** Simulated seconds past the day's last frame; zero while the market is open. */
+        long afterCloseSeconds;
         Map<String, BigDecimal> opening;
         long nextEventId;
 
@@ -371,6 +400,10 @@ public class MarketReplayService {
         }
 
         MarketModels.Frame currentFrame() { return frames.get(frameIndex); }
+
+        Instant cursor() { return currentFrame().timestamp().plusSeconds(afterCloseSeconds); }
+
+        boolean closed() { return afterCloseSeconds > 0; }
 
         Map<String, BigDecimal> openingPrices() {
             if (opening == null) {

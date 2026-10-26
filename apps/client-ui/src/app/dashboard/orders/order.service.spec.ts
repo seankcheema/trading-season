@@ -1,4 +1,6 @@
 import { ToastService } from '../../notifications/toast.service';
+import { DuaSpeech } from '../../dua/dua-speech.service';
+import { DuaMilestones } from '../../dua/dua-milestones.service';
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
@@ -498,7 +500,7 @@ describe('OrderService', () => {
         reservedCash: 0,
       });
       expect(filled).toHaveLength(1);
-      expect(TestBed.inject(ToastService).messages()[0].message).toBe('Filled 2 order #1 at $101.50.');
+      expect(TestBed.inject(DuaSpeech).line()?.text).toBe('Filled 2 order #1 at $101.50.');
       http.expectNone('/api/orders');
     });
 
@@ -526,12 +528,51 @@ describe('OrderService', () => {
       expect(service.orders()[0].status).toBe('FILLED');
     });
 
-    it('re-reads the history for an order it has not seen', async () => {
+    it('re-reads the history for an order it has not seen and announces its fill', async () => {
+      const filled: OrderResult[] = [];
+      const resolved: OrderResult[] = [];
+      service.pendingFilled.subscribe((value) => filled.push(value));
+      service.pendingResolved.subscribe((value) => resolved.push(value));
       await signIn();
       stream.send('order-status', frame({ orderId: 77 }));
       await settle();
-      http.expectOne('/api/orders').flush([order({ orderId: 77 })]);
-      expect(service.orders().map((value) => value.orderId)).toEqual([77]);
+      // Only the order the frame named is announced, not older history the page never showed.
+      http.expectOne('/api/orders').flush([order({ orderId: 77 }), order({ orderId: 5 })]);
+      expect(service.orders().map((value) => value.orderId)).toEqual([77, 5]);
+      expect(filled.map((value) => value.orderId)).toEqual([77]);
+      expect(resolved.map((value) => value.orderId)).toEqual([77]);
+    });
+
+    it('announces orders a catch-up read finds resolved after they were open', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      try {
+        const filled: OrderResult[] = [];
+        const resolved: OrderResult[] = [];
+        service.pendingFilled.subscribe((value) => filled.push(value));
+        service.pendingResolved.subscribe((value) => resolved.push(value));
+        await signIn();
+        service.loadOrders().subscribe();
+        http.expectOne('/api/orders').flush([
+          order({ orderId: 1, status: 'ACCEPTED', resolvedAt: null }),
+          order({ orderId: 2, status: 'ACCEPTED', resolvedAt: null }),
+          order({ orderId: 3 }),
+        ]);
+        stream.drop();
+        await settle();
+        const reopened = stream.opening();
+        vi.advanceTimersByTime(STREAM_RECONNECT_MS.initial);
+        await reopened;
+        await settle();
+        http.expectOne('/api/orders').flush([
+          order({ orderId: 1 }),
+          order({ orderId: 2, status: 'CANCELLED' }),
+          order({ orderId: 3 }),
+        ]);
+        expect(filled.map((value) => value.orderId)).toEqual([1]);
+        expect(resolved.map((value) => value.orderId)).toEqual([1, 2]);
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it('reopens a dropped stream after a growing delay and catches up once', async () => {
@@ -676,6 +717,28 @@ describe('OrderService', () => {
     let failure: unknown;
     service.submitOrder({ ...BUY, instrumentId: 99 }).subscribe({ error: (error) => (failure = error) });
     expect(failure).toBeInstanceOf(UnknownInstrumentError);
+  });
+
+  it('has Dua celebrate the first order not turned away, once the history is known', () => {
+    const reached = vi.spyOn(TestBed.inject(DuaMilestones), 'reached');
+    const submit = (result: OrderResult) => {
+      service.submitOrder(BUY).subscribe();
+      http.match('/api/instruments').forEach((request) => request.flush([instrument()]));
+      http.expectOne({ method: 'POST', url: '/api/orders' }).flush(result);
+    };
+
+    // Without the history there is no telling whether this is the first.
+    submit(order({ orderId: 1 }));
+    expect(reached).not.toHaveBeenCalled();
+
+    service.loadOrders().subscribe();
+    http.expectOne('/api/orders').flush([order({ orderId: 1, status: 'REJECTED' })]);
+    submit(order({ orderId: 2, status: 'REJECTED' }));
+    expect(reached).not.toHaveBeenCalled();
+    submit(order({ orderId: 3, status: 'ACCEPTED' }));
+    expect(reached).toHaveBeenCalledExactlyOnceWith('trade');
+    submit(order({ orderId: 4 }));
+    expect(reached).toHaveBeenCalledTimes(1);
   });
 
   it('serves the cached history without a request when a refresh is not required', () => {

@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { of, throwError } from 'rxjs';
 import { text } from '../../testing/dom';
-import { fakeReportStore, report, run, schedulerStatus } from '../../testing/fixtures';
+import { fakeReportStore, report, schedulerStatus } from '../../testing/fixtures';
 import { ReportState, ReportStore } from '../reporting/report-store.service';
 import { ReportingApiService } from '../reporting/reporting-api.service';
 import { RunsComponent } from './runs.component';
@@ -138,18 +138,6 @@ describe('RunsComponent', () => {
       ['20261008T200000Z', 'volume_by_symbol.png', '90d'],
     ]);
     expect(saved.map((file) => file.name)).toEqual(['20261008T200000Z-90d-volume_by_symbol.png']);
-  });
-
-  it('offers an earlier run whole, whatever range is on screen', () => {
-    const root = render('ready', () => {
-      store.report.set(report({ range: '7d' }));
-      store.runs.set([run(), run({ runId: '20261008T193000Z', files: ['daily_trades.png'] })]);
-    });
-
-    root.querySelector<HTMLButtonElement>('[data-earlier] button')!.click();
-
-    expect(runFile).toHaveBeenCalledWith('20261008T193000Z', 'daily_trades.png', 'all');
-    expect(saved.map((file) => file.name)).toEqual(['20261008T193000Z-daily_trades.png']);
   });
 
   it("says whose days the chart is cut in, and that a range rather than the run is empty", () => {
@@ -296,7 +284,7 @@ describe('RunsComponent', () => {
     const accounts = card(render(), 'Orders per account');
 
     expect(meters(accounts)).toEqual([
-      'Growth (Sean Cheema) 5 orders 4 filled · 1 rejected',
+      'Growth 5 orders 4 filled · 1 rejected',
       '12 3 orders 2 filled · 1 rejected',
     ]);
     expect(widths(accounts)).toEqual(['bg-gain 80%', 'bg-loss 20%', 'bg-gain 40%', 'bg-loss 20%']);
@@ -391,47 +379,6 @@ describe('RunsComponent', () => {
     expect(runFile).toHaveBeenCalledTimes(1);
     expect(text(root.querySelector('[role="alert"]')!)).toBe("We couldn't download that chart. Try again.");
     expect(saved).toHaveLength(0);
-  });
-
-  it("does not answer a request for an earlier run with another run's chart", () => {
-    runFile.mockImplementation(() => throwError(() => new HttpErrorResponse({ status: 404 })));
-    runs.mockReturnValue(of({ latest: '20261008T200000Z', runs: [], timestamp: '' }));
-    const root = render('ready', () =>
-      store.runs.set([run(), run({ runId: '20261008T193000Z', files: ['daily_trades.png'] })]),
-    );
-
-    root.querySelector<HTMLButtonElement>('[data-earlier] button')!.click();
-    fixture.detectChanges();
-
-    expect(runFile.mock.calls).toEqual([['20261008T193000Z', 'daily_trades.png', 'all']]);
-    expect(runs).not.toHaveBeenCalled();
-    expect(text(root.querySelector('[role="alert"]')!)).toBe("We couldn't download that chart. Try again.");
-  });
-
-  it('lists a run still on disk beside the one shown, with its charts to download', () => {
-    const older = run({
-      runId: '20261008T193000Z',
-      generatedAt: '2026-10-08T19:30:00+00:00',
-      eventCount: 1,
-      files: ['daily_trades.png', 'extra.png'],
-    });
-    const root = render('ready', () => store.runs.set([run(), older]));
-    const earlier = card(root, 'Earlier runs');
-    const rows = Array.from(earlier.querySelectorAll('[data-earlier] > li'));
-
-    expect(rows).toHaveLength(1);
-    // A file the screen does not know is offered under its own name.
-    expect(text(rows[0])).toMatch(/^20261008T193000Z Oct 8, \d{1,2}:30 [AP]M \S+ · 1 event Trades per day extra\.png$/);
-
-    rows[0].querySelectorAll<HTMLButtonElement>('button')[1].click();
-    expect(runFile).toHaveBeenCalledWith('20261008T193000Z', 'extra.png', 'all');
-    expect(saved.map((file) => file.name)).toEqual(['20261008T193000Z-extra.png']);
-  });
-
-  it('shows no earlier runs when the one on screen is the only one', () => {
-    const root = render();
-
-    expect(card(root, 'Earlier runs')).toBeUndefined();
   });
 
   it('keeps the last report on screen when a refresh fails, and says so', () => {

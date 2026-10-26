@@ -288,33 +288,6 @@
           }
         </section>
       </div>
-
-      @if (earlierRuns().length) {
-        <section class="dash-card shrink-0 p-5" data-print-hide="true">
-          <h2 class="text-sm font-semibold">Earlier runs</h2>
-          <ul class="mt-2" data-earlier>
-            @for (run of earlierRuns(); track run.runId) {
-              <li class="dash-table-row flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-                <span class="font-medium tabular-nums">{{ run.runId }}</span>
-                <span class="text-muted-foreground text-xs">
-                  {{ dateTime(run.generatedAt) }} · {{ plural(run.eventCount, 'event') }}
-                </span>
-                <span class="flex flex-wrap gap-x-3 gap-y-1">
-                  @for (name of run.files; track name) {
-                    <button
-                      type="button"
-                      class="dash-link flex items-center gap-1"
-                      (click)="download(name, run.runId)"
-                    >
-                      <ng-icon name="lucideDownload" size="12" />{{ chartTitle(name) }}
-                    </button>
-                  }
-                </span>
-              </li>
-            }
-          </ul>
-        </section>
-      }
     </div>
   }
 }

@@ -13,6 +13,7 @@ import {
 } from 'rxjs';
 import { BACKEND_API_URL } from '../../core/api.config';
 import { TokenStorageService } from '../../core/auth/token-storage.service';
+import { DuaMilestones } from '../../dua/dua-milestones.service';
 
 export interface WatchlistEntry {
   symbol: string;
@@ -22,6 +23,7 @@ export interface WatchlistEntry {
 @Injectable({ providedIn: 'root' })
 export class WatchlistStore {
   private readonly http = inject(HttpClient);
+  private readonly milestones = inject(DuaMilestones);
   private readonly api = `${inject(BACKEND_API_URL)}/me/watchlist`;
   private readonly cancelled = new Subject<void>();
   private revision = 0;
@@ -115,6 +117,9 @@ export class WatchlistStore {
             );
           }
           this.status.set('ready');
+          if (!previous && this.entries().length === 1) {
+            this.milestones.reached('star');
+          }
         },
         error: () => {
           this.entries.update((entries) => {

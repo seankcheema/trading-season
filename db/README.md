@@ -349,3 +349,7 @@ The migration contract test in `db/tools/tests/test_execution_migration.py` runs
 [V012](migrations/V012__Stop_trigger_reference.sql) adds the latched Stop activation quote. Submission quote columns remain unchanged for auditing; untriggered historical orders capture the activation quote when they trigger.
 
 [V013](migrations/V013__Order_audit_lifecycle.sql) permits TRIGGERED and CANCELLED audit entries. This fixes PostgreSQL rollbacks on Stop triggering, manual cancellation, and day-order expiry.
+
+## Dua viewed insights
+
+[V018](migrations/V018__Dua_read_state.sql) adds `dua_read_state`, owned by Holdings and Trade. Rows acknowledge an exact user/account/simulation/category/stock/content version; an SHA-256 identity makes duplicate acknowledgments idempotent. Old versions remain available for simulation rewinds and concurrent devices. This is a UI preference with no reporting-feed contract. Deploy the migration before enabling the new [Dua API](../apps/holdings-and-trade-service/api.md#dua-read-state).

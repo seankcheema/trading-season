@@ -23,12 +23,7 @@
         class="flex w-full min-w-0 flex-wrap items-center justify-end gap-2 sm:w-auto md:gap-3"
         data-testid="dashboard-header-controls"
       >
-        <app-market-clock-control
-          data-testid="market-clock-dropdown"
-          [open]="openHeaderDropdown() === 'market-clock'"
-          (openChange)="onHeaderDropdownOpenChange('market-clock', $event)"
-          (snapshotApplied)="onClockSnapshot($event)"
-        />
+        <app-market-clock-control data-testid="market-clock" />
         <app-account-control
           data-testid="account-dropdown"
           data-tour="account"
@@ -310,13 +305,13 @@
                 <span class="skeleton flex-1 rounded-lg" aria-hidden="true"></span>
               </div>
             } @else if (portfolioHistory.status() !== 'error') {
-              <p
-                class="text-muted-foreground flex min-h-32 flex-1 items-center justify-center text-center text-sm"
+              <app-dua-empty
+                class="text-muted-foreground min-h-32 flex-1 justify-center text-sm"
                 data-testid="portfolio-chart-empty-state"
                 role="status"
               >
                 No portfolio history in this range yet.
-              </p>
+              </app-dua-empty>
             }
           } @else {
             @if (accountStore.status() === 'error') {
@@ -462,8 +457,11 @@
                     </li>
                   } @empty {
                     @if (watchlist.status() === 'ready') {
-                      <li class="text-muted-foreground px-2 py-6 text-center text-sm">
-                        Search for a stock and click its star to add it to your watchlist.
+                      <li class="text-muted-foreground px-2 py-6 text-sm">
+                        <app-dua-empty>
+                          <p>Search for a stock and click its star to add it to your watchlist.</p>
+                          <p>I'll keep an eye on it for you.</p>
+                        </app-dua-empty>
                       </li>
                     }
                   }
@@ -557,12 +555,15 @@
                         </li>
                       }
                     } @else {
-                      <li class="text-muted-foreground px-2 py-6 text-center text-sm">
-                        {{
-                          hasAccounts()
-                            ? 'This account has no holdings yet.'
-                            : 'Create an account to start building a portfolio.'
-                        }}
+                      <li class="text-muted-foreground px-2 py-6 text-sm">
+                        <app-dua-empty>
+                          @if (hasAccounts()) {
+                            <p>This account has no holdings yet.</p>
+                            <p>Search for a stock and I'll help you make your first trade.</p>
+                          } @else {
+                            <p>Create an account to start building a portfolio.</p>
+                          }
+                        </app-dua-empty>
                       </li>
                     }
                   }
@@ -588,11 +589,12 @@
     [attr.inert]="tourOpen() ? '' : null"
     (closed)="closeOrder()"
     (submitted)="onOrderSubmitted($event)"
+    (symbolChange)="duaSymbol.set($event)"
   />
 }
 
 @if (settingsOpen()) {
-  <app-settings-dialog (closed)="closeSettings()" />
+  <app-settings-dialog (closed)="closeSettings()" (clockApplied)="onClockSnapshot($event)" />
 }
 
 @switch (historyDialog()) {
@@ -641,4 +643,10 @@
 }
 
 <app-order-editor [instruments]="instruments()" [sessionId]="marketSessionId()" [marketTimestamp]="currentMarketTimestamp()" />
-<app-dua [holdings]="simulationHoldings().get(selectedAccountId() ?? -1) ?? []" [quotes]="instruments()" [connected]="duaConnected()" />
+<app-dua
+  [holdings]="simulationHoldings().get(selectedAccountId() ?? -1) ?? []"
+  [quotes]="instruments()"
+  [symbol]="duaSymbol()"
+  [raised]="!!orderInstrument()"
+  [connected]="duaConnected()"
+/>

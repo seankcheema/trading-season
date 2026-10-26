@@ -87,8 +87,7 @@ public class PortfolioValuationService {
      * @param userId verified caller
      * @param scheduled whether unchanged captures in the same minute should be coalesced
      * @return observation, or null when archived or when the account has never bought shares
-     * @throws AccountNotFoundException for a missing account
-     * @throws app.auth.ForbiddenException for another user's account
+     * @throws AccountNotFoundException if the account does not exist or belongs to another user, which answers the same
      */
     @Transactional
     public Point capture(Integer accountId, UUID userId, boolean scheduled) {
@@ -144,8 +143,7 @@ public class PortfolioValuationService {
      * @param timeframe supported chart range
      * @return chronological chart points, including presentation endpoints that are not persisted
      * @throws IllegalArgumentException for an unsupported timeframe
-     * @throws AccountNotFoundException for a missing account
-     * @throws app.auth.ForbiddenException for another user's account
+     * @throws AccountNotFoundException if the account does not exist or belongs to another user, which answers the same
      */
     @Transactional(readOnly = true)
     public List<Point> history(Integer accountId, UUID userId, String timeframe) {

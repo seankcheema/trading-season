@@ -3,6 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { PLATFORM_ID, Provider } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { TokenStorageService } from '../../core/auth/token-storage.service';
+import { DuaMilestones } from '../../dua/dua-milestones.service';
 import { NotOwnedError } from './account-error';
 import { AccountStore, SELECTED_ACCOUNT_STORAGE_KEY } from './account-store.service';
 import { Account, AccountHolding, CashTransaction } from './account.models';
@@ -295,6 +296,17 @@ describe('AccountStore', () => {
       expect(store.cashBalance()).toBe(5_000);
     });
 
+    it('has Dua celebrate the first account opened beyond the default', () => {
+      const reached = vi.spyOn(TestBed.inject(DuaMilestones), 'reached');
+      const created: Account = { accountId: 3, name: 'Savings', openedDate: '2026-09-21' };
+      store.createAccount({ name: 'Savings' }).subscribe();
+      http.expectOne({ method: 'POST', url: '/api/me/accounts' }).flush(created);
+      http.expectOne({ method: 'GET', url: '/api/me/accounts' }).flush([ACCOUNTS[0], created]);
+      http.expectOne(holdingsUrl(3)).flush([]);
+
+      expect(reached).toHaveBeenCalledExactlyOnceWith('account');
+    });
+
     it('reports a created account as created even if the reload fails', () => {
       let result: Account | undefined;
       store.createAccount({ name: 'Savings' }).subscribe((account) => (result = account));
@@ -339,6 +351,23 @@ describe('AccountStore', () => {
       expect(done).toBe(true);
       expect(store.cashBalance()).toBe(5_125.5);
       expect(store.cashTransactions().map((t) => t.cashTransactionId)).toEqual([9]);
+    });
+
+    it("has Dua celebrate the user's first deposit after the opening funds, and no later one", () => {
+      const reached = vi.spyOn(TestBed.inject(DuaMilestones), 'reached');
+      const deposit = (history: ReturnType<typeof cash>[]) => {
+        store.deposit(100).subscribe();
+        http.expectOne({ method: 'POST', url: '/api/me/cash-transactions' }).flush({});
+        http.expectOne('/api/users/me').flush({ availableFunds: 5_100 });
+        http.expectOne(isCashTransactions).flush(history);
+      };
+
+      deposit([cash(11, 'DEPOSIT'), cash(10, 'WITHDRAWAL'), cash(1, 'DEPOSIT')]);
+      expect(reached).toHaveBeenCalledExactlyOnceWith('deposit');
+
+      reached.mockClear();
+      deposit([cash(12, 'DEPOSIT'), cash(11, 'DEPOSIT'), cash(1, 'DEPOSIT')]);
+      expect(reached).not.toHaveBeenCalled();
     });
 
     it('withdraws from the shared cash without changing the selected account', () => {

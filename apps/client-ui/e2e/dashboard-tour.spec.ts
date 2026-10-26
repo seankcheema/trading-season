@@ -25,7 +25,7 @@ test.describe('the first-run dashboard tour', () => {
   });
 
   test('walks a new user to the stock search, then stays closed', async ({ page }) => {
-    const tour = page.getByRole('dialog', { name: 'Welcome to TradingSeason' });
+    const tour = page.getByRole('dialog', { name: "Hi, I'm Dua" });
     await expect(tour).toBeVisible();
     await expect(page.getByTestId('dashboard-content')).toHaveAttribute('inert', '');
 
@@ -43,7 +43,7 @@ test.describe('the first-run dashboard tour', () => {
     await expect(page.getByTestId('tour-spotlight')).toBeVisible();
     await expect(page.getByRole('link', { name: 'Open full screen market chart' })).toBeVisible();
     await page.keyboard.press('ArrowRight');
-    await expect(page.getByRole('dialog', { name: 'Meet Dua' })).toBeVisible();
+    await expect(page.getByRole('dialog', { name: "You'll find me here" })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Open full screen market chart' })).toHaveCount(0);
     await expect(page.getByTestId('tour-spotlight')).toBeVisible();
     await page.keyboard.press('ArrowRight');
@@ -64,7 +64,7 @@ test.describe('the first-run dashboard tour', () => {
     await page.getByLabel('Open profile menu').click();
     await page.getByRole('menuitem', { name: 'Take the tour' }).click();
 
-    await expect(page.getByRole('dialog', { name: 'Welcome to TradingSeason' })).toBeVisible();
+    await expect(page.getByRole('dialog', { name: "Hi, I'm Dua" })).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('dashboard-tour')).toHaveCount(0);
   });

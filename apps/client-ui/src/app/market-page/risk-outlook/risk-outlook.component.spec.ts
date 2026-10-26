@@ -2,14 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import {
-  PlatformSignals,
-  SignalDay,
-  readingFor,
-  recentReads,
-  recordAt,
-  riskPointsFor,
-} from './platform-signals';
+import { PlatformSignals, SignalDay, readingFor, recentReads, recordAt } from './platform-signals';
 import { PLATFORM_SIGNALS_URL } from './platform-signals.service';
 import { RiskOutlookComponent } from './risk-outlook.component';
 
@@ -155,37 +148,6 @@ describe('recentReads', () => {
   it('skips reads whose outcome the file does not carry', () => {
     const partial = days.map((d, i) => (i === 32 ? { ...d, outcome: null } : d));
     expect(recentReads(partial, 41, 5).map((r) => r.date)).not.toContain('2026-08-03');
-  });
-});
-
-describe('riskPointsFor', () => {
-  const days = Array.from({ length: 12 }, (_, i) =>
-    day(`2026-07-${String(i + 1).padStart(2, '0')}`, {
-      probability: 0.1 * (i + 1),
-      outcome: i % 2 ? 'stormier' : 'calmer',
-    }),
-  );
-  const signals: PlatformSignals = {
-    ...SIGNALS,
-    symbols: { AAPL: { firstDay: '2026-07-01', lastDay: '2026-07-12', days } },
-  };
-
-  it('includes only readings made before the simulated trading date, as percentages', () => {
-    const points = riskPointsFor(signals, 'aapl', '2026-07-10T15:00:00Z');
-    expect(points.map((p) => p.time.toISOString().slice(0, 10)).at(-1)).toBe('2026-07-09');
-    expect(points).toHaveLength(9);
-    expect(points[0].value).toBe(10);
-  });
-
-  it('marks an outcome only once its window had closed by that date', () => {
-    const points = riskPointsFor(signals, 'AAPL', '2026-07-10T15:00:00Z');
-    // Nine readings (indices 0..8); a window of 5 has closed for indices 0..3 only.
-    expect(points.slice(0, 4).map((p) => p.stormier)).toEqual([false, true, false, true]);
-    expect(points.slice(4).every((p) => p.stormier === null)).toBe(true);
-  });
-
-  it('is empty for a symbol the file lacks', () => {
-    expect(riskPointsFor(signals, 'TSLA', '2026-07-10T15:00:00Z')).toEqual([]);
   });
 });
 

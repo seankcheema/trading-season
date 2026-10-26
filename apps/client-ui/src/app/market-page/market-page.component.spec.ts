@@ -1,3 +1,7 @@
+import { signal } from '@angular/core';
+import { DuaSession } from '../dua/dua-session.service';
+import { PlatformSignalsService } from './risk-outlook/platform-signals.service';
+import { PlatformTrendService } from './trend-read/platform-trend.service';
 import { SELECTED_ACCOUNT_STORAGE_KEY } from '../dashboard/accounts/account-store.service';
 import { ExecutionSettingsService } from '../dashboard/settings-dialog/execution-settings.service';
 import { of as savedExecutionPreference } from 'rxjs';
@@ -21,7 +25,7 @@ import { PriceChartComponent } from '../dashboard/shared/price-chart.component';
 import { MarketPageComponent } from './market-page.component';
 import { TradeTicketComponent } from '../dashboard/shared/trade-ticket.component';
 import { AuthService } from '../core/auth/auth.service';
-import { ToastService } from '../notifications/toast.service';
+import { DuaSpeech } from '../dua/dua-speech.service';
 import { OrderService } from '../dashboard/orders/order.service';
 
 const SNAPSHOT: MarketSnapshot = {
@@ -113,6 +117,24 @@ describe('MarketPageComponent', () => {
           },
         },
         { provide: MarketDataService, useValue: marketData },
+        // Dua's own suites exercise persistence and forecasts; keep trading request assertions scoped to trading.
+        {
+          provide: DuaSession,
+          useValue: {
+            minimized: signal(true),
+            unread: () => false,
+            query: () => {},
+            viewedSummary: () => {},
+          },
+        },
+        {
+          provide: PlatformSignalsService,
+          useValue: { signals: signal(null), status: signal('ready'), load: () => of(null) },
+        },
+        {
+          provide: PlatformTrendService,
+          useValue: { trend: signal(null), status: signal('ready'), load: () => of(null) },
+        },
       ],
     }).compileComponents();
     navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
@@ -142,6 +164,10 @@ describe('MarketPageComponent', () => {
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
+    http
+      .match((r) => r.url.startsWith('/forecast/'))
+      .forEach((r) => r.flush({}, { status: 503, statusText: 'Unavailable' }));
+    http.match((r) => r.url === '/api/me/dua/read-state/query').forEach((r) => r.flush([]));
     return fixture;
   }
 
@@ -426,7 +452,6 @@ describe('MarketPageComponent', () => {
       'EMA 20',
       'Bollinger Bands 20 · 2σ',
       'RSI 14',
-      'Volatility outlook 5-day',
     ]);
 
     options[0].click();
@@ -517,16 +542,16 @@ describe('MarketPageComponent', () => {
 
     resolved.next(order({ accountId: 1, status: 'FILLED' }));
     expect(refresh).toHaveBeenLastCalledWith(1);
-    expect(TestBed.inject(ToastService).messages()).toHaveLength(0);
+    expect(TestBed.inject(DuaSpeech).line()).toBeNull();
 
     resolved.next(
       order({ accountId: undefined, status: 'REJECTED', rejectionReason: 'Out of funds' }),
     );
     expect(refresh).toHaveBeenLastCalledWith(2);
-    expect(TestBed.inject(ToastService).messages()[0].message).toBe('Out of funds');
+    expect(TestBed.inject(DuaSpeech).line()?.text).toBe('Out of funds');
 
     resolved.next(order({ accountId: undefined, status: 'REJECTED', rejectionReason: null }));
-    expect(TestBed.inject(ToastService).messages().at(-1)?.message).toBe('Order rejected.');
+    expect(TestBed.inject(DuaSpeech).line()?.text).toBe('Order rejected.');
   });
 
   it('skips the balance refresh when a resolved order has no account to refresh', async () => {
@@ -587,8 +612,9 @@ describe('MarketPageComponent', () => {
 
   it('opens the Outlook tool when the link asks for it', async () => {
     const fixture = await setup('aapl', '', '', [], {}, 'outlook');
-    expect(fixture.componentInstance['insightTab']()).toBe('outlook');
-    expect(fixture.nativeElement.querySelector('[data-testid="market-outlook"]')).not.toBeNull();
+    expect(fixture.componentInstance['insightTab']()).toBe('trading');
+    expect(fixture.componentInstance['duaOutlook']()).toBe(true);
+    expect(fixture.nativeElement.querySelector('[data-testid="market-outlook"]')).toBeNull();
   });
 
   it('toggles live tailing for both comparison charts from the navigation bar', async () => {
@@ -611,16 +637,12 @@ describe('MarketPageComponent', () => {
     expect(charts.every((chart) => chart.componentInstance.liveTailing())).toBe(true);
   });
 
-  it('offers Trading, Outlook and Recent Orders in the market tools', async () => {
+  it('offers Trading and Recent Orders in the market tools', async () => {
     const fixture = await setup();
     const tabs = Array.from(
       fixture.nativeElement.querySelectorAll('[role="tab"]'),
     ) as HTMLButtonElement[];
-    expect(tabs.map((tab) => tab.textContent?.trim())).toEqual([
-      'Trading',
-      'Outlook',
-      'Recent Orders',
-    ]);
+    expect(tabs.map((tab) => tab.textContent?.trim())).toEqual(['Trading', 'Recent Orders']);
     expect(tabs[0].getAttribute('aria-selected')).toBe('true');
     tabs[1].click();
     fixture.detectChanges();
@@ -1048,7 +1070,7 @@ describe('MarketPageComponent', () => {
     expect(fixture.componentInstance['recentOrders']()[0].status).toBe('FILLED');
     expect(fixture.componentInstance['orderMessage']()).toBe('');
     expect(fixture.nativeElement.querySelector('app-trade-ticket [role="status"]')).toBeNull();
-    expect(TestBed.inject(ToastService).messages()[0].message).toBe('Filled 2 AAPL at $226.10.');
+    expect(TestBed.inject(DuaSpeech).line()?.text).toBe('Filled 2 AAPL at $226.10.');
     http.verify();
   });
   it('reports an accepted order that is still open', async () => {
@@ -1060,9 +1082,7 @@ describe('MarketPageComponent', () => {
     http.expectOne('/api/accounts/2/holdings').flush([]);
     http.expectOne('/api/users/me').flush({ availableFunds: 9000 });
     fixture.detectChanges();
-    expect(TestBed.inject(ToastService).messages()[0].message).toBe(
-      'Market buy order placed for 2 AAPL.',
-    );
+    expect(TestBed.inject(DuaSpeech).line()?.text).toBe('Market buy order placed for 2 AAPL.');
     http.verify();
   });
   it('sells all owned shares and displays the execution immediately', async () => {

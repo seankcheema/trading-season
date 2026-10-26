@@ -407,7 +407,8 @@ export class OrderDetailComponent {
 
   // What the price beside an audit entry is.
   protected priceKind(event: AuditEvent): string {
-    return event.priceKind === 'FILL' ? 'fill price' : 'indicative';
+    const labels: Record<string, string> = { FILL: 'fill price', TRIGGER: 'trigger quote', REFERENCE: 'market quote' };
+    return labels[String(event.priceKind)] ?? 'indicative';
   }
 
   // Red for a failure, green for a fill, gold while pending, cyan for any other step on the way.

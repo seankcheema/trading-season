@@ -13,6 +13,7 @@ import {
   DUA_EXPLANATIONS,
   insightTextParts,
   sparklinePoints,
+  watchlistPulse,
 } from './dua-insights';
 
 describe('Dua insights', () => {
@@ -276,5 +277,21 @@ describe('Dua insights', () => {
         'America/Chicago',
       ).detail,
     ).toContain('+400.0%');
+  });
+  it('summarizes only watchlist stocks without naming them', () => {
+    const quotes = [quote('UP', 110, 10), quote('DOWN', 95, -5), quote('OTHER', 150, 50)];
+    const card = watchlistPulse(['UP', 'DOWN', 'MISSING'], quotes);
+    expect(card.title).toBe('Your watchlist since the open');
+    expect(card.metrics?.map((m) => [m.label, m.value])).toEqual([
+      ['Rising', '1'],
+      ['Falling', '1'],
+    ]);
+    expect(card.text).toBe(
+      'On average, your watchlist stocks moved +2.5% since the open. 2 of 3 have prices.',
+    );
+    expect(JSON.stringify(card)).not.toMatch(/"UP"|DOWN|OTHER/);
+    expect(watchlistPulse(['UP'], quotes).takeaway).toBe('Most of your watchlist is rising.');
+    expect(watchlistPulse([], quotes).takeaway).toBe('Your watchlist is empty.');
+    expect(watchlistPulse(null, quotes).takeaway).toBe('Your watchlist is unavailable.');
   });
 });

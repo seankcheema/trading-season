@@ -10,7 +10,7 @@ import { cashAt, holdingsAt, executionTime } from '../dashboard/accounts/simulat
 import { OrderService } from '../dashboard/orders/order.service';
 import { OrderResult } from '../dashboard/orders/order.models';
 import { toOrderErrorMessage } from '../dashboard/orders/order-error';
-import { ToastService } from '../notifications/toast.service';
+import { DuaSpeech } from '../dua/dua-speech.service';
 import { AuthService } from '../core/auth/auth.service';
 import { ThemeToggleComponent } from '../core/theme/theme-toggle.component';
 import { DashboardHeaderDropdownComponent } from '../dashboard/shared/dashboard-header-dropdown.component';
@@ -19,11 +19,9 @@ import { TermsDialogComponent } from '../dashboard/terms/terms-dialog.component'
 import { AccountControlComponent } from '../dashboard/shared/account-control.component';
 import { MarketClockControlComponent } from '../dashboard/shared/market-clock-control.component';
 import { MarketClockService } from '../dashboard/shared/market-clock.service';
-import { RiskOutlookComponent } from './risk-outlook/risk-outlook.component';
-import { TrendReadComponent } from './trend-read/trend-read.component';
+
+
 import { DuaComponent } from '../dua/dua.component';
-import { PlatformSignalsService } from './risk-outlook/platform-signals.service';
-import { riskPointsFor } from './risk-outlook/platform-signals';
 import {
   ActivityItem,
   ActivityRowComponent,
@@ -108,11 +106,12 @@ import { SignedPercentPipe } from '../dashboard/shared/signed-percent.pipe';
 import { TickAnimations } from '../dashboard/shared/tick-animations';
 import { TimeframeToggleComponent } from '../dashboard/shared/timeframe-toggle.component';
 import { TradeTicketComponent } from '../dashboard/shared/trade-ticket.component';
+import { DuaEmptyComponent } from '../dua/dua-empty.component';
 
 type PageStatus = 'loading' | 'ready' | 'not-found' | 'error';
 type ChartStatus = 'loading' | 'ready' | 'empty' | 'error';
 
-type InsightTab = 'trading' | 'outlook' | 'recent-orders';
+type InsightTab = 'trading' | 'recent-orders';
 
 type ToolbarMenu = 'indicators' | 'chart-mode' | 'comparison';
 
@@ -130,8 +129,7 @@ interface MarketStats {
   selector: 'app-market-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
-    RiskOutlookComponent,
-    TrendReadComponent,
+    DuaEmptyComponent,
     ThemeToggleComponent,
     DuaComponent,
     TitleCasePipe,
@@ -211,10 +209,11 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   protected readonly orders = inject(OrderService);
   protected readonly clock = inject(MarketClockService);
 
-  private readonly toasts = inject(ToastService);
+  // Dua says each order's outcome in its speech bubble.
+  private readonly speech = inject(DuaSpeech);
   private readonly destroyRef = inject(DestroyRef);
 
-  protected readonly openHeaderDropdown = signal<'account' | 'market-clock' | 'profile' | null>(
+  protected readonly openHeaderDropdown = signal<'account' | 'profile' | null>(
     null,
   );
   protected readonly profileInitials = this.accountStore.initials;
@@ -322,7 +321,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   protected readonly availableCash = computed(() => {
     const draft = this.tradeTicket()?.draft();
     return draft?.side === 'buy'
-      ? Math.max(0, this.cashBalance() - draft.estimatedValue)
+      ? Math.max(0, this.cashBalance() - (draft.reservationPrice ? draft.quantity * draft.reservationPrice : draft.estimatedValue))
       : this.cashBalance();
   });
   protected readonly heldShares = computed(() =>
@@ -485,18 +484,17 @@ export class MarketPageComponent implements OnInit, OnDestroy {
           if (result.status === 'FILLED') {
             const message = `Filled ${result.quantity} ${draft.symbol} at ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(result.executionPrice ?? result.indicativePrice)}.`;
 
-            this.toasts.show(message, 'success');
+            this.speech.say(message);
             this.refreshBalances(accountId);
           } else if (result.status === 'REJECTED') {
             const message = `Rejected: ${result.rejectionReason ?? 'The order was rejected.'}`;
             this.orderError.set(message);
-            this.toasts.show(message, 'error');
+            this.speech.say(message, 'error');
           } else {
             this.refreshBalances(accountId);
             const type = (draft.executionType ?? 'MARKET').replaceAll('_', '-').toLowerCase();
-            this.toasts.show(
+            this.speech.say(
               `${type.charAt(0).toUpperCase() + type.slice(1)} ${draft.side} order placed for ${result.quantity} ${draft.symbol}.`,
-              'success',
             );
           }
         },
@@ -504,7 +502,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
           this.submitting.set(false);
           const message = toOrderErrorMessage(error);
           this.orderError.set(message);
-          this.toasts.show(message, 'error');
+          this.speech.say(message, 'error');
         },
       });
   }
@@ -569,25 +567,11 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     () => this.chartModes.find((option) => option.value === this.chartMode()) ?? this.chartModes[0],
   );
   protected readonly liveTailing = signal(true);
+  protected readonly duaOutlook = signal(false);
   protected readonly insightTab = signal<InsightTab>('trading');
   protected readonly toolsCollapsed = signal(false);
   protected readonly openToolbarMenu = signal<ToolbarMenu | null>(null);
   protected readonly enabledIndicators = signal<readonly TechnicalIndicator[]>([]);
-  private readonly platformSignals = inject(PlatformSignalsService);
-  // The platform model's readings for the open instrument up to the simulated clock,
-  // for the chart's risk pane. The file loads the first time the indicator is enabled.
-  protected readonly riskSeries = computed(() => {
-    const signals = this.platformSignals.signals();
-    const at = this.marketTimestamp();
-    return signals && at && this.enabledIndicators().includes('risk')
-      ? riskPointsFor(signals, this.symbol(), at)
-      : [];
-  });
-  private readonly loadRiskSignals = effect(() => {
-    if (this.enabledIndicators().includes('risk') && this.platformSignals.status() === 'idle') {
-      this.platformSignals.load().subscribe({ error: () => undefined });
-    }
-  });
   protected readonly indicatorOptions = [
     { value: 'sma', label: 'SMA', period: TECHNICAL_INDICATOR_PERIODS.sma, detail: '' },
     { value: 'ema', label: 'EMA', period: TECHNICAL_INDICATOR_PERIODS.ema, detail: '' },
@@ -598,12 +582,6 @@ export class MarketPageComponent implements OnInit, OnDestroy {
       detail: ' · 2σ',
     },
     { value: 'rsi', label: 'RSI', period: TECHNICAL_INDICATOR_PERIODS.rsi, detail: '' },
-    {
-      value: 'risk',
-      label: 'Volatility outlook',
-      period: TECHNICAL_INDICATOR_PERIODS.risk,
-      detail: '-day',
-    },
   ] as const satisfies readonly {
     value: TechnicalIndicator;
     label: string;
@@ -746,7 +724,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
         this.refreshBalances(accountId);
       }
       if (order.status === 'REJECTED') {
-        this.toasts.show(order.rejectionReason ?? 'Order rejected.', 'error');
+        this.speech.say(order.rejectionReason ?? 'Order rejected.', 'error');
       }
     });
     if (!isPlatformBrowser(this.platformId)) {
@@ -780,8 +758,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
       this.route.queryParamMap.subscribe((params) => {
         // A tab name in the query opens that tool, so a link can land on the Outlook card.
         if (params.get('tab') === 'outlook') {
-          this.insightTab.set('outlook');
-          this.toolsCollapsed.set(false);
+          this.duaOutlook.set(true);
         }
         const rawSymbol = params.get('compare') ?? '';
         const symbol = normalizeMarketSymbol(rawSymbol);
@@ -897,7 +874,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
 
     if (!(
       target instanceof Element &&
-      target.closest('app-dashboard-header-dropdown, app-market-clock-control, app-account-control')
+      target.closest('app-dashboard-header-dropdown, app-account-control')
     )) {
       this.openHeaderDropdown.set(null);
     }

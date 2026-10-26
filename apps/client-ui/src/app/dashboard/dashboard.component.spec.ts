@@ -470,6 +470,30 @@ describe('DashboardComponent', () => {
     expect(fixture.nativeElement.querySelector('[role="dialog"]')).not.toBeNull();
   });
 
+  it('gives Dua the order dialog stock and lifts it over the dialog', async () => {
+    const fixture = createDashboard();
+    const component = fixture.componentInstance;
+    const dua = () => fixture.nativeElement.querySelector('app-dua') as HTMLElement;
+    fixture.detectChanges();
+    expect(component['duaSymbol']()).toBe('');
+    expect(dua().style.zIndex).toBe('');
+
+    component['openOrder'](MOCK_INSTRUMENTS[0]);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(component['duaSymbol']()).toBe(MOCK_INSTRUMENTS[0].symbol);
+    expect(dua().style.zIndex).toBe('60');
+
+    const ticket = fixture.debugElement.query((el) => el.name === 'app-order-submission');
+    ticket.triggerEventHandler('symbolChange', MOCK_INSTRUMENTS[1].symbol);
+    expect(component['duaSymbol']()).toBe(MOCK_INSTRUMENTS[1].symbol);
+
+    component['closeOrder']();
+    fixture.detectChanges();
+    expect(component['duaSymbol']()).toBe('');
+    expect(dua().style.zIndex).toBe('');
+  });
+
   it('should keep the dialog open after an order so its outcome stays visible', () => {
     const fixture = createDashboard();
     fixture.detectChanges();
@@ -545,7 +569,7 @@ describe('DashboardComponent', () => {
       (child as HTMLElement).getAttribute('data-testid'),
     );
 
-    expect(children.slice(0, 2)).toEqual(['market-clock-dropdown', 'account-dropdown']);
+    expect(children.slice(0, 2)).toEqual(['market-clock', 'account-dropdown']);
   });
 
   it('should offer settings and a red log out behind the profile icon instead of a logout button', () => {
@@ -639,28 +663,28 @@ describe('DashboardComponent', () => {
     expect(accountDropdown.textContent).toContain('Retirement Account');
   });
 
-  it('should close the market clock dropdown when the account dropdown opens', () => {
+  it('should close the profile dropdown when the account dropdown opens', () => {
     const fixture = createDashboard();
     fixture.detectChanges();
 
-    openDropdown(fixture, 'market-clock-dropdown');
+    openDropdown(fixture, 'profile-dropdown');
     openDropdown(fixture, 'account-dropdown');
 
-    expect(dropdownDetails(fixture, 'market-clock-dropdown').open).toBe(false);
+    expect(dropdownDetails(fixture, 'profile-dropdown').open).toBe(false);
     expect(dropdownDetails(fixture, 'account-dropdown').open).toBe(true);
     expect(fixture.componentInstance['openHeaderDropdown']()).toBe('account');
   });
 
-  it('should close the account dropdown when the market clock dropdown opens', () => {
+  it('should close the account dropdown when the profile dropdown opens', () => {
     const fixture = createDashboard();
     fixture.detectChanges();
 
     openDropdown(fixture, 'account-dropdown');
-    openDropdown(fixture, 'market-clock-dropdown');
+    openDropdown(fixture, 'profile-dropdown');
 
     expect(dropdownDetails(fixture, 'account-dropdown').open).toBe(false);
-    expect(dropdownDetails(fixture, 'market-clock-dropdown').open).toBe(true);
-    expect(fixture.componentInstance['openHeaderDropdown']()).toBe('market-clock');
+    expect(dropdownDetails(fixture, 'profile-dropdown').open).toBe(true);
+    expect(fixture.componentInstance['openHeaderDropdown']()).toBe('profile');
   });
 
   it('should close an open header dropdown when clicking outside it', () => {
@@ -679,15 +703,15 @@ describe('DashboardComponent', () => {
     const fixture = createDashboard();
     fixture.detectChanges();
 
-    openDropdown(fixture, 'market-clock-dropdown');
-    const marketDropdown = fixture.nativeElement.querySelector(
-      '[data-testid="market-clock-dropdown"]',
+    openDropdown(fixture, 'account-dropdown');
+    const accountDropdown = fixture.nativeElement.querySelector(
+      '[data-testid="account-dropdown"]',
     ) as HTMLElement;
-    marketDropdown.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    accountDropdown.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     fixture.detectChanges();
 
-    expect(dropdownDetails(fixture, 'market-clock-dropdown').open).toBe(true);
-    expect(fixture.componentInstance['openHeaderDropdown']()).toBe('market-clock');
+    expect(dropdownDetails(fixture, 'account-dropdown').open).toBe(true);
+    expect(fixture.componentInstance['openHeaderDropdown']()).toBe('account');
   });
 
   it('should keep dropdown labels on one line in matching-width trigger markup', () => {
@@ -706,24 +730,23 @@ describe('DashboardComponent', () => {
     const accountDropdown = fixture.nativeElement.querySelector(
       '[data-testid="account-dropdown"]',
     ) as HTMLElement;
-    const marketDropdown = fixture.nativeElement.querySelector(
-      '[data-testid="market-clock-dropdown"]',
+    const marketClock = fixture.nativeElement.querySelector(
+      '[data-testid="market-clock"]',
     ) as HTMLElement;
     const accountLabel = accountDropdown.querySelector('summary span') as HTMLElement;
-    const marketLabel = marketDropdown.querySelector('summary span') as HTMLElement;
+    const marketLabel = marketClock.querySelector('span') as HTMLElement;
     const accountDetails = accountDropdown.querySelector('details') as HTMLElement;
-    const marketDetails = marketDropdown.querySelector('details') as HTMLElement;
     const accountPanel = accountDropdown.querySelector('details > div') as HTMLElement;
-    const marketPanel = marketDropdown.querySelector('details > div') as HTMLElement;
 
     expect(accountDropdown.textContent).toContain('Personal Investing Account');
-    expect(marketDropdown.textContent).toContain('Jan 5, 8:30:00 AM CT');
+    expect(marketClock.textContent).toContain('Jan 5, 8:30:00 AM CT');
+    // The clock is read-only in the header: no dropdown to open.
+    expect(marketClock.querySelector('details')).toBeNull();
+    expect(marketClock.querySelector('[data-testid="market-closed"]')).toBeNull();
     expect(accountDropdown.className).toContain('w-60');
     expect(accountDetails.className).toContain('w-full');
-    expect(marketDropdown.className).toContain('w-60');
-    expect(marketDetails.className).toContain('w-full');
+    expect(marketClock.className).toContain('w-fit');
     expect(accountPanel.className).toContain('w-full');
-    expect(marketPanel.className).toContain('w-full');
     expect(accountLabel.className).toContain('min-w-0');
     expect(accountLabel.className).toContain('flex-1');
     expect(accountLabel.className).toContain('truncate');
@@ -952,6 +975,56 @@ describe('DashboardComponent', () => {
     expect(component['clockError']()).toBe('Selected date has no seeded trading data');
   });
 
+  it('marks the market closed in the header once the simulated time passes the close', () => {
+    const fixture = createDashboard();
+    fixture.componentInstance['applySnapshot']({
+      sessionId: 2026001,
+      status: 'CLOSED',
+      marketTimestamp: '2026-01-05T22:15:00Z',
+      serverTimestamp: '2026-01-05T22:15:00Z',
+      calendar: CALENDAR,
+      stocks: [],
+    });
+    fixture.detectChanges();
+
+    const clock = fixture.nativeElement.querySelector('[data-testid="market-clock"]') as HTMLElement;
+    expect(clock.textContent).toContain('4:15:00 PM CT');
+    expect(clock.querySelector('[data-testid="market-closed"]')?.textContent).toContain('Closed');
+  });
+
+  it('reloads the page from a time applied in Settings', () => {
+    const fixture = createDashboard();
+    const http = TestBed.inject(HttpTestingController);
+    fixture.componentInstance['applySnapshot']({
+      sessionId: 2026001,
+      status: 'OPEN',
+      marketTimestamp: '2026-01-05T14:30:00Z',
+      serverTimestamp: '2026-01-05T14:30:00Z',
+      calendar: CALENDAR,
+      stocks: [],
+    });
+    fixture.componentInstance['settingsOpen'].set(true);
+    fixture.detectChanges();
+    const settings = fixture.nativeElement.querySelector('[data-testid="market-clock-settings"]') as HTMLElement;
+    const input = settings.querySelector('#market-date-time') as HTMLInputElement;
+    input.value = '2026-01-05T09:00';
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    (Array.from(fixture.nativeElement.querySelectorAll('app-settings-dialog button')).find((b: any) => b.textContent?.includes('Save all')) as HTMLButtonElement).click();
+
+    http.expectOne('/api/market/clock?sessionId=2026001').flush({
+      sessionId: 2026001,
+      status: 'OPEN',
+      marketTimestamp: '2026-01-05T15:00:00Z',
+      serverTimestamp: '2026-01-05T15:00:00Z',
+      calendar: CALENDAR,
+      stocks: [],
+    });
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance['currentMarketTimestamp']()).toBe('2026-01-05T15:00:00Z');
+  });
+
   it('should display the current simulated time in the market clock trigger', () => {
     const fixture = createDashboard();
     fixture.componentInstance['applySnapshot']({
@@ -967,7 +1040,7 @@ describe('DashboardComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Jan 5, 8:30:00 AM CT');
   });
 
-  it('should show shortened copy in the market clock dropdown', () => {
+  it('should show shortened copy in the Settings market clock section', () => {
     const fixture = createDashboard();
     fixture.componentInstance['applySnapshot']({
       sessionId: 2026001,
@@ -977,14 +1050,15 @@ describe('DashboardComponent', () => {
       calendar: CALENDAR,
       stocks: [],
     });
+    fixture.componentInstance['settingsOpen'].set(true);
     fixture.detectChanges();
 
     const dropdown = fixture.nativeElement.querySelector(
-      '[data-testid="market-clock-dropdown"]',
+      '[data-testid="market-clock-settings"]',
     ) as HTMLElement;
     expect(dropdown.textContent).toContain('Range: Jan 5 - Jan 6');
     expect(dropdown.textContent).not.toContain('Loaded range');
-    expect(dropdown.textContent).toContain('Apply time');
+    expect(dropdown.textContent).not.toContain('Apply time');
   });
 
   it('should set datetime bounds from the simulation calendar', () => {
@@ -997,6 +1071,7 @@ describe('DashboardComponent', () => {
       calendar: CALENDAR,
       stocks: [],
     });
+    fixture.componentInstance['settingsOpen'].set(true);
     fixture.detectChanges();
 
     const input = fixture.nativeElement.querySelector('#market-date-time') as HTMLInputElement;
@@ -2101,7 +2176,7 @@ describe('DashboardComponent', () => {
 
       flushAccounts(fixture);
 
-      expect(tour(fixture)?.textContent).toContain('Welcome to TradingSeason');
+      expect(tour(fixture)?.textContent).toContain("Hi, I'm Dua");
       expect(content(fixture).hasAttribute('inert')).toBe(true);
     });
 
@@ -2137,7 +2212,7 @@ describe('DashboardComponent', () => {
         .flush({ ...PROFILE, availableFunds: CASH, termsAccepted: true });
       fixture.detectChanges();
 
-      expect(tour(fixture)?.textContent).toContain('Welcome to TradingSeason');
+      expect(tour(fixture)?.textContent).toContain("Hi, I'm Dua");
     });
 
     it('does not open by itself once finished or skipped', () => {
@@ -2181,7 +2256,7 @@ describe('DashboardComponent', () => {
       fixture.detectChanges();
       await fixture.whenStable();
 
-      expect(tour(fixture)?.textContent).toContain('Meet Dua');
+      expect(tour(fixture)?.textContent).toContain("You'll find me here");
       expect(page.querySelector('app-order-submission')).toBeNull();
     });
 
@@ -2251,7 +2326,7 @@ describe('DashboardComponent', () => {
       await fixture.whenStable();
 
       expect(dropdownDetails(fixture, 'profile-dropdown').open).toBe(false);
-      expect(tour(fixture)?.textContent).toContain('Welcome to TradingSeason');
+      expect(tour(fixture)?.textContent).toContain("Hi, I'm Dua");
 
       tourButton(fixture, 'Skip').click();
       fixture.detectChanges();

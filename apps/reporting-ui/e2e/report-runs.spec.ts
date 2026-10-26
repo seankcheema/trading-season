@@ -188,7 +188,7 @@ test.describe('Report runs', () => {
     }
   });
 
-  test('counts orders per account, labelled with the account and its owner', async ({
+  test('counts orders per account, labelled with the account and never its owner', async ({
     page,
     openAsAdmin,
   }) => {
@@ -202,10 +202,10 @@ test.describe('Report runs', () => {
     await expect(rows).toHaveCount(accounts.length);
     for (const accountId of accounts) {
       const own = resolved.filter((order) => order.accountId === accountId);
-      const row = rows.filter({
-        hasText: `${accountName(accountId)} (${fullName(customerOf(accountId))})`,
-      });
+      // Runs reach analysts as well as admins, so they name accounts and no trader (BR-17).
+      const row = rows.filter({ hasText: accountName(accountId) });
       await expect(row).toContainText(`${own.length} orders`);
+      await expect(row).not.toContainText(fullName(customerOf(accountId)));
       await expect(row).toContainText(
         `${own.filter((o) => o.status === 'FILLED').length} filled · ${own.filter((o) => o.status === 'REJECTED').length} rejected`,
       );

@@ -1,7 +1,7 @@
 import { ExecutionSettingsService } from '../settings-dialog/execution-settings.service';
 import { of } from 'rxjs';
 import { vi, afterEach } from 'vitest';
-import { ToastService } from '../../notifications/toast.service';
+import { DuaSpeech } from '../../dua/dua-speech.service';
 import { TestBed } from '@angular/core/testing';
 import { OrderSubmissionComponent } from './order-submission.component';
 import { Instrument } from '../mock-data';
@@ -100,6 +100,16 @@ describe('OrderSubmissionComponent', () => {
     expect(component['cashAfter']()).toBeCloseTo(9366.82);
   });
 
+  it('should deduct the limit a buy reserves from cash after', () => {
+    const fixture = setup();
+    const component = fixture.componentInstance;
+    component.execution()!.executionType.set('LIMIT');
+    component.execution()!.limitPrice.set(320);
+    component['shares'].set(2);
+    expect(component['orderValue']()).toBeCloseTo(633.18);
+    expect(component['cashAfter']()).toBeCloseTo(9360);
+  });
+
   it.each(['2026-01-06T17:00:00Z', '2026-01-05T16:00:00Z', 'invalid'])(
     'uses the selected replay timestamp %s at submission with a real-time fallback',
     (timestamp) => {
@@ -157,7 +167,7 @@ describe('OrderSubmissionComponent', () => {
     component['submit']();
     http.expectOne({ method: 'GET', url: '/api/instruments' }).flush(CATALOGUE);
     http.expectOne({ method: 'POST', url: '/api/orders' }).flush(filledOrder({ executionPrice: 320.1 }));
-    expect(TestBed.inject(ToastService).messages()[0].message).toBe('Filled 2 AAPL at $320.10.');
+    expect(TestBed.inject(DuaSpeech).line()?.text).toBe('Filled 2 AAPL at $320.10.');
     http.verify();
   });
 
@@ -173,7 +183,7 @@ describe('OrderSubmissionComponent', () => {
     http.expectOne('/api/instruments').flush(CATALOGUE);
     http.expectOne('/api/orders').flush(filledOrder({ status: 'ACCEPTED', executionType: type }));
     fixture.detectChanges();
-    expect(TestBed.inject(ToastService).messages()[0].message).toContain('buy order placed for 2 AAPL');
+    expect(TestBed.inject(DuaSpeech).line()?.text).toContain('buy order placed for 2 AAPL');
     expect(fixture.nativeElement.textContent).not.toContain('Order open.');
     http.verify();
   });
@@ -209,7 +219,7 @@ describe('OrderSubmissionComponent', () => {
     component['activeSymbol'].set('NVDA');
     fixture.destroy();
     posted.flush(filledOrder());
-    expect(TestBed.inject(ToastService).messages()[0].message).toBe('Filled 2 AAPL at $316.59.');
+    expect(TestBed.inject(DuaSpeech).line()?.text).toBe('Filled 2 AAPL at $316.59.');
     http.verify();
   });
 
@@ -248,7 +258,7 @@ describe('OrderSubmissionComponent', () => {
           .orders()
           .map((order) => order.orderId),
       ).toEqual([2, 1]);
-      expect(TestBed.inject(ToastService).messages()).toHaveLength(1);
+      expect(TestBed.inject(DuaSpeech).line()).not.toBeNull();
       if (side === 'buy') fixture.componentRef.setInput('cashBalance', 0);
       else fixture.componentRef.setInput('positions', { AAPL: 0 });
       fixture.detectChanges();
@@ -290,7 +300,7 @@ describe('OrderSubmissionComponent', () => {
     expect(posted.request.body).toMatchObject({ orderType: 'SELL', quantity: 3, instrumentId: 7 });
     posted.flush(filledOrder({ orderType: 'SELL', quantity: 3 }));
     expect(component['filled']()).toBe(true);
-    expect(TestBed.inject(ToastService).messages()[0].message).toBe('Filled 3 AAPL at $316.59.');
+    expect(TestBed.inject(DuaSpeech).line()?.text).toBe('Filled 3 AAPL at $316.59.');
     http.verify();
   });
 
@@ -573,7 +583,7 @@ describe('OrderSubmissionComponent', () => {
       fixture.detectChanges();
 
       expect(emitted).toHaveLength(1);
-      expect(TestBed.inject(ToastService).messages()[0].message).toBe('Filled 3 AAPL at $316.59.');
+      expect(TestBed.inject(DuaSpeech).line()?.text).toBe('Filled 3 AAPL at $316.59.');
       expect(el.querySelector('[data-testid="order-filled"]')).toBeNull();
       expect(submitButton().disabled).toBe(false);
 
@@ -597,9 +607,10 @@ describe('OrderSubmissionComponent', () => {
       vi.advanceTimersByTime(1000);
       fixture.detectChanges();
 
-      expect(TestBed.inject(ToastService).messages()[0].message).toBe(
-        'Rejected: BR-05: not tradable',
-      );
+      expect(TestBed.inject(DuaSpeech).line()).toMatchObject({
+        text: 'Rejected: BR-05: not tradable',
+        tone: 'error',
+      });
       expect(el.querySelector('[data-testid="order-rejected"]')).toBeNull();
 
       submitButton().click();
@@ -608,7 +619,7 @@ describe('OrderSubmissionComponent', () => {
         .flush(null, { status: 500, statusText: 'Server Error' });
       fixture.detectChanges();
 
-      expect(TestBed.inject(ToastService).messages()[0].message).toContain(
+      expect(TestBed.inject(DuaSpeech).line()?.text).toContain(
         'The service is unavailable right now.',
       );
       expect(el.querySelector('[data-testid="order-error"]')).toBeNull();

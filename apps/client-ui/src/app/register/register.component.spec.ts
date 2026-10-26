@@ -52,6 +52,29 @@ describe('RegisterComponent', () => {
     expect(fixture.componentInstance).toBeTruthy();
   });
 
+  it('has Dua look away from the SSN and both passwords', () => {
+    const fixture = TestBed.createComponent(RegisterComponent);
+    fixture.detectChanges();
+    const element = fixture.nativeElement as HTMLElement;
+    const mood = () => element.querySelector('[data-testid="dua-peek"]')!.getAttribute('data-mood');
+    const focus = (selector: string) => {
+      element
+        .querySelector(selector)!
+        .dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+      fixture.detectChanges();
+    };
+
+    focus('#firstName');
+    expect(mood()).toBe('happy');
+    for (const field of ['#ssn', '#password', '#confirmPassword']) {
+      focus(field);
+      expect(mood()).toBe('shy');
+    }
+    fixture.componentInstance['showConfirmPassword'].set(true);
+    fixture.detectChanges();
+    expect(mood()).toBe('peek');
+  });
+
   it('should not have a username field', () => {
     const fixture = TestBed.createComponent(RegisterComponent);
     fixture.detectChanges();

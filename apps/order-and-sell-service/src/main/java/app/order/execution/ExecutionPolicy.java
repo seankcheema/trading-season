@@ -66,11 +66,18 @@ public final class ExecutionPolicy {
     public static boolean triggers(String side, BigDecimal price, BigDecimal stop) {
         return Order.TYPE_BUY.equals(side) ? price.compareTo(stop) >= 0 : price.compareTo(stop) <= 0;
     }
-    /** Returns the maximum BUY reservation price.
+    /** Returns the maximum BUY reservation price. A stop BUY cannot fill below its stop, so the
+     * buffer is applied to the higher of the stop and the submission quote.
      * @param order snapshotted instruction
      * @return explicit limit or protected BUY maximum */
     public static BigDecimal reservationPrice(Order order) {
-        return order.getLimitPrice() != null ? order.getLimitPrice()
-                : boundary(Order.TYPE_BUY, order.getReferencePrice(), order.getBufferPercent());
+        if (order.getLimitPrice() != null) {
+            return order.getLimitPrice();
+        }
+        BigDecimal anchor = order.getReferencePrice();
+        if (order.getStopPrice() != null && order.getStopPrice().compareTo(anchor) > 0) {
+            anchor = order.getStopPrice();
+        }
+        return boundary(Order.TYPE_BUY, anchor, order.getBufferPercent());
     }
 }

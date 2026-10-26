@@ -421,9 +421,9 @@ class OrderControllerIntegrationTest {
         UUID strangerId = givenAnOrderBelongingToAnotherUser();
 
         // A perfectly valid token, and an accountId that simply isn't theirs.
+        // It answers like a missing account, so the id reveals nothing (BR-02).
         submitAs(strangerId, "BUY", "1", "20.00")
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.error").value("You do not have access to this account"));
+                .andExpect(status().isNotFound());
 
         // Nothing was written: the caller's own orders are unchanged, and so are the owner's.
         assertEquals(1, orderRepository.findAll().size());
@@ -592,7 +592,20 @@ class OrderControllerIntegrationTest {
         return stranger.getUserId();
     }
 
-    private static RequestPostProcessor tokenFor(UUID userId) {
+    @Test
+    void operationsRolesCannotTrade() throws Exception {
+        for (String role : new String[] {"ROLE_ADMIN", "ROLE_ANALYST"}) {
+            mockMvc.perform(post("/api/orders")
+                            .with(tokenFor(user.getUserId()).authorities(
+                                    new org.springframework.security.core.authority.SimpleGrantedAuthority(role)))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body("BUY", "1", "20.00")))
+                    .andExpect(status().isForbidden());
+        }
+        assertTrue(orderRepository.findAll().isEmpty());
+    }
+
+    private static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor tokenFor(UUID userId) {
         return jwt().jwt(token -> token.subject(userId.toString()));
     }
 

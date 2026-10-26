@@ -60,8 +60,7 @@ public class AccountController {
      * @param accountId the account ID
      * @param jwt       the verified access token
      * @return the account details
-     * @throws AccountNotFoundException if the account does not exist
-     * @throws app.auth.ForbiddenException if the account is owned by a different user
+     * @throws AccountNotFoundException if the account does not exist or belongs to another user, which answers the same
      */
     @GetMapping("/accounts/{accountId}")
     @Operation(summary = "Get account details", description = "Retrieves details of a specific account owned by the authenticated user")
@@ -80,8 +79,7 @@ public class AccountController {
      * @param accountId the account ID
      * @param jwt       the verified access token
      * @return a list of holdings in this account
-     * @throws AccountNotFoundException if the account does not exist
-     * @throws app.auth.ForbiddenException if the account is owned by a different user
+     * @throws AccountNotFoundException if the account does not exist or belongs to another user, which answers the same
      */
     @GetMapping("/accounts/{accountId}/holdings")
     @Operation(summary = "List account holdings", description = "Retrieves all stock holdings in a specific account")
@@ -124,8 +122,7 @@ public class AccountController {
      * @param request   the update details
      * @param jwt       the verified access token
      * @return the updated account
-     * @throws AccountNotFoundException if the account does not exist
-     * @throws app.auth.ForbiddenException if the account is owned by a different user
+     * @throws AccountNotFoundException if the account does not exist or belongs to another user, which answers the same
      */
     @PutMapping("/me/accounts/{accountId}")
     @Operation(summary = "Update account name", description = "Updates the name of an account owned by the authenticated user")

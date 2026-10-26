@@ -20,7 +20,7 @@ for (const viewport of [
   { width: 1280, height: 900 },
   { width: 390, height: 844 },
 ]) {
-  test(`order toast placement and expiry at ${viewport.width}px`, async ({
+  test(`Dua says order outcomes beside its launcher at ${viewport.width}px`, async ({
     page,
     loginPage,
   }) => {
@@ -82,47 +82,57 @@ for (const viewport of [
     await expect(dialog.getByRole('button', { name: /^Buying/ })).toBeDisabled();
     await expect(dialog.locator('.order-spinner')).toBeVisible();
 
-    const toast = page.locator('hlm-toaster .toast');
-    await expect(toast).toContainText('Filled 1 AAPL at $225.80.');
-    expect(await toast.evaluate((el) => getComputedStyle(el).animationName)).toContain('toast-rise');
-    const stack = page.locator('hlm-toaster .toast-stack');
-    const box = (await stack.boundingBox())!;
-    expect(Math.abs(box.x + box.width / 2 - viewport.width / 2)).toBeLessThan(2);
-    expect(viewport.height - box.y - box.height).toBeCloseTo(48, 0);
-    expect(await toast.evaluate((el) => getComputedStyle(el.querySelector('p')!).fontSize)).toBe('16px');
-    expect(await stack.evaluate((el) => Number(getComputedStyle(el).zIndex))).toBeGreaterThan(50);
+    const bubble = page.getByTestId('dua-bubble');
+    await expect(bubble).toContainText('Filled 1 AAPL at $225.80.');
+    await expect(page.getByTestId('dua-says')).toHaveText('Filled 1 AAPL at $225.80.');
+    expect(await bubble.evaluate((el) => getComputedStyle(el).animationName)).toContain(
+      'dua-bubble-pop',
+    );
+    // Beside the launcher, bottoms nearly level, inside the viewport and over the dialog.
+    const launcher = page.getByRole('button', { name: 'Dua insights', exact: true });
+    const said = (await bubble.boundingBox())!;
+    const dua = (await launcher.boundingBox())!;
+    expect(said.x + said.width).toBeLessThanOrEqual(dua.x);
+    expect(said.x).toBeGreaterThanOrEqual(15);
+    expect(Math.abs(said.y + said.height - (dua.y + dua.height - 4))).toBeLessThan(2);
+    expect(
+      await page.locator('app-dua').evaluate((el) => Number(getComputedStyle(el).zIndex)),
+    ).toBeGreaterThan(50);
     await page.screenshot({
-      path: `reports/playwright/toast-${viewport.width}.png`,
+      path: `reports/playwright/dua-bubble-${viewport.width}.png`,
       fullPage: true,
     });
-    await expect(toast.getByRole('button')).toHaveCount(0);
-    await expect(toast).not.toContainText(/\u00d7/);
+    await expect(bubble.getByRole('button')).toHaveCount(0);
 
-    let toastId = 1;
-    for (const [side, action] of [['buy', 'Buy'], ['sell', 'Sell'], ['sell', 'Sell']]) {
+    // Each outcome replaces the line before it.
+    for (const [side, action] of [
+      ['buy', 'Buy'],
+      ['sell', 'Sell'],
+      ['sell', 'Sell'],
+    ]) {
+      const previous = await bubble.getAttribute('data-line-id');
       if (side === 'sell') await dialog.getByRole('button', { name: 'sell', exact: true }).click();
       await dialog.getByRole('button', { name: `${action} 1 AAPL`, exact: true }).click();
 
       await expect(dialog.locator('.order-spinner')).toBeVisible();
-      await expect(toast).toHaveCount(1);
-      await expect(toast).toHaveAttribute('data-toast-id', String(++toastId));
-      expect(await toast.evaluate((el) => getComputedStyle(el).animationName)).toContain('toast-rise');
-
+      await expect(bubble).toHaveCount(1);
+      await expect(bubble).not.toHaveAttribute('data-line-id', previous!);
+      expect(await bubble.evaluate((el) => getComputedStyle(el).animationName)).toContain(
+        'dua-bubble-pop',
+      );
     }
     expect(sides).toEqual(['BUY', 'BUY', 'SELL', 'SELL']);
     expect(new Set(references).size).toBe(4);
-    await dialog.getByRole('button', { name: 'Sell 1 AAPL', exact: true }).click();
-
-    await expect(toast).toHaveCount(1);
 
     await dialog.getByLabel('Close order submission').click();
-    await expect(toast.first()).toBeVisible();
+    await expect(bubble).toBeVisible();
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    expect(await toast.first().evaluate((el) => getComputedStyle(el).transitionDuration)).toBe('0s');
-    expect(await toast.first().evaluate((el) => getComputedStyle(el).animationName)).toBe('none');
-    await expect(toast.getByRole('button')).toHaveCount(0);
+    expect(await bubble.evaluate((el) => getComputedStyle(el).animationName)).toBe('none');
 
-    await expect(toast).toHaveCount(0);
+    // The first order was a first, which Dua celebrates once the order lines have gone.
+    await expect(bubble).toContainText('Your first order is in', { timeout: 10_000 });
+    await expect(bubble).toHaveClass(/tone-celebrate/);
+    await expect(bubble).toHaveCount(0, { timeout: 10_000 });
     expect(errors).toEqual([]);
   });
 }

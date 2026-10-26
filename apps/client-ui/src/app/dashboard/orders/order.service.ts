@@ -21,6 +21,8 @@ import {
 import { BACKEND_API_URL } from '../../core/api.config';
 import { newClientReference } from '../../core/client-reference';
 import { UnknownInstrumentError } from './order-error';
+import { DuaMilestones } from '../../dua/dua-milestones.service';
+import { DuaSpeech } from '../../dua/dua-speech.service';
 import {
   ExecutionType,
   InstrumentRef,
@@ -58,6 +60,8 @@ const STATUS_RANK: Record<OrderStatus, number> = {
 export class OrderService {
   private readonly _http = inject(HttpClient);
   private readonly toasts = inject(ToastService);
+  private readonly speech = inject(DuaSpeech);
+  private readonly milestones = inject(DuaMilestones);
   private readonly _apiUrl = inject(BACKEND_API_URL);
   private readonly _auth = inject(AuthService);
   private readonly _storage = inject(TokenStorageService);
@@ -182,6 +186,12 @@ export class OrderService {
       // A fill moves funds and holdings, so the history the dashboard shows is stale
       // the moment one lands.
       tap((result) => {
+        // The first order that was not turned away is one Dua celebrates; that is only known
+        // once the history has loaded.
+        const firstOrder =
+          result.status !== 'REJECTED' &&
+          this.historyStatus() === 'ready' &&
+          this._orders().every((item) => item.status === 'REJECTED');
         this.revision++;
         this.historyRequest = undefined;
         this._orders.update((orders) => [
@@ -189,6 +199,9 @@ export class OrderService {
           ...orders.filter((item) => item.orderId !== result.orderId).map((item) => item.orderId === order.replacesOrderId
             ? { ...item, status: 'CANCELLED' as const, reservedCash: 0, reservedShares: 0, rejectionCode: 'ORDER_REPLACED', rejectionReason: `Replaced by order #${result.orderId}` } : item),
         ]);
+        if (firstOrder) {
+          this.milestones.reached('trade');
+        }
       }),
     );
   }
@@ -303,7 +316,7 @@ export class OrderService {
       this.reconnectDelay = STREAM_RECONNECT_MS.initial;
       if (this.catchUp) {
         this.catchUp = false;
-        this.loadOrders().subscribe({ error: () => undefined });
+        this.reloadAndAnnounce();
       }
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
@@ -371,7 +384,7 @@ export class OrderService {
     }
     const current = this._orders().find((order) => order.orderId === frame.orderId);
     if (!current) {
-      this.loadOrders().subscribe({ error: () => undefined });
+      this.reloadAndAnnounce(frame.orderId);
       return;
     }
     if (STATUS_RANK[frame.status] <= STATUS_RANK[current.status]) {
@@ -399,15 +412,37 @@ export class OrderService {
     }
   }
 
+  // Re-reads the history and announces orders it shows resolved that the page last saw open, or
+  // the unknown order a frame named, so views refresh the cash and holdings they moved (BR-10).
+  private reloadAndAnnounce(unknownOrderId?: number): void {
+    const before = new Map(this._orders().map((order) => [order.orderId, order.status]));
+    this.loadOrders().subscribe({
+      next: (orders) => {
+        for (const order of orders) {
+          const previous = before.get(order.orderId);
+          const watched = previous === undefined ? order.orderId === unknownOrderId : STATUS_RANK[previous] < 2;
+          if (watched && STATUS_RANK[order.status] === 2) {
+            this.pendingResolved.next(order);
+            if (order.status === 'FILLED') {
+              this.pendingFilled.next(order);
+              this.announceFill(order);
+            }
+          }
+        }
+      },
+      error: () => undefined,
+    });
+  }
+
   // A fill that lands after the submission response, such as a limit order's, is announced
-  // here because no component is waiting on it.
+  // here, by Dua, because no component is waiting on it.
   private announceFill(order: OrderResult): void {
     const instrument = this._catalogue().find((item) => item.instrumentId === order.instrumentId);
     const symbol = instrument?.simulatedStockSymbol ?? instrument?.ticker ?? `order #${order.orderId}`;
     const price = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(
       order.executionPrice ?? order.indicativePrice,
     );
-    this.toasts.show(`Filled ${order.quantity} ${symbol} at ${price}.`, 'success');
+    this.speech.say(`Filled ${order.quantity} ${symbol} at ${price}.`);
   }
 
   // Resolves a market-data symbol to the instrument behind it, for callers that need the id

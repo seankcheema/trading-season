@@ -1,4 +1,4 @@
-import { DOCUMENT } from '@angular/common';
+import { DOCUMENT, NgTemplateOutlet } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -15,6 +15,7 @@ import {
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideArrowRight, lucideSearch, lucideX } from '@ng-icons/lucide';
 import { HlmButtonImports } from '@shared/ui-components/button';
+import { DuaFigureComponent } from '../../dua/dua-figure.component';
 import { TourProgressService } from './tour-progress.service';
 
 export type TourPlacement = 'top' | 'bottom' | 'left' | 'right';
@@ -41,24 +42,25 @@ export interface TourRect {
   height: number;
 }
 
-// The first step introduces the tour and the last hands over to the search, so the counter
-// and the progress dots cover the steps in between and the last.
+// Dua runs the tour, so the copy is in Dua's voice. The first step introduces Dua and the tour
+// and the last hands over to the search, so the counter and the progress dots cover the steps
+// in between and the last.
 export const TOUR_STEPS: readonly TourStep[] = [
   {
     target: null,
-    title: 'Welcome to TradingSeason',
-    body: 'Search stocks, place trades and watch your portfolio grow. This tour takes about 30 seconds.',
+    title: "Hi, I'm Dua",
+    body: "I'm your market guide on TradingSeason. Let me show you how to search stocks, place trades and watch your portfolio grow. It takes about 30 seconds.",
   },
   {
     target: 'search',
     title: 'Every trade starts with a search',
-    body: 'Type a company or ticker, or press / from anywhere on the dashboard. Pick a result to open its order ticket.',
+    body: 'Type a company or ticker here, or press / from anywhere on the dashboard. Pick a result to open its order ticket.',
     place: 'bottom',
   },
   {
     target: 'net-worth',
     title: 'Your money',
-    body: 'Net worth is your cash plus everything you own. Deposit or withdraw cash here at any time.',
+    body: 'Net worth is your cash plus everything you own. You can deposit or withdraw cash here at any time.',
     place: 'right',
   },
   {
@@ -70,13 +72,13 @@ export const TOUR_STEPS: readonly TourStep[] = [
   {
     target: 'portfolio',
     title: 'Track performance',
-    body: 'See how the selected account has moved over a day, five days, a month or a year.',
+    body: 'Here you can see how the selected account has moved over a day, five days, a month or a year.',
     place: 'left',
   },
   {
     target: 'assets',
     title: 'Holdings and watch list',
-    body: 'Click any row to trade it. Star a stock in its order ticket to keep it on your watch list.',
+    body: "Click any row to trade it. Star a stock in its order ticket and I'll keep it on your watch list.",
     place: 'top',
   },
   {
@@ -88,14 +90,14 @@ export const TOUR_STEPS: readonly TourStep[] = [
   },
   {
     target: 'dua',
-    title: 'Meet Dua',
-    body: 'Dua is your market guide, always one click away. Open it for a daily review, a look at your holdings, or insights on the stock you are viewing. The figures are examples for now.',
+    title: "You'll find me here",
+    body: "I'm always one click away. Open me for a daily review, a look at your holdings, or insights on the stock you are viewing. My figures are examples for now.",
     place: 'top',
   },
   {
     target: 'search',
     title: "You're ready",
-    body: 'Search for a stock and place your first trade.',
+    body: "Search for a stock and place your first trade. I'll be right here if you need me.",
     place: 'bottom',
   },
 ];
@@ -151,15 +153,15 @@ export function placeTourCard(
 
 let nextTourId = 0;
 
-// First-run spotlight tour of the dashboard, from the TradingSeason design system. Each step
-// dims the page around one element and explains it in a card beside it. Esc closes, the arrow
+// First-run spotlight tour of the dashboard, from the TradingSeason design system, run by Dua.
+// Each step dims the page around one element and Dua explains it in a card beside it. Esc closes, the arrow
 // keys move between steps, and the step is saved so a reload resumes it. Clicks outside the
 // card are blocked. The host makes the page behind inert while the tour is open and moves
 // focus once it ends, as only it knows where focus should go.
 @Component({
   selector: 'app-dashboard-tour',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [HlmButtonImports, NgIcon],
+  imports: [DuaFigureComponent, HlmButtonImports, NgIcon, NgTemplateOutlet],
   providers: [provideIcons({ lucideArrowRight, lucideSearch, lucideX })],
   host: {
     '(document:keydown)': 'onKeydown($event)',
@@ -196,15 +198,27 @@ let nextTourId = 0;
           [style.width.px]="cardWidth()"
         >
           @if (current === 0) {
-            <img src="2b-waves.svg" alt="" class="mb-3 size-10" />
+            <ng-container
+              *ngTemplateOutlet="avatar; context: { $implicit: 'tour-avatar-hello mb-3 size-12' }"
+            />
           }
           <div class="flex items-center justify-between gap-3">
-            <span
-              class="text-muted-foreground text-xs font-medium tracking-[0.04em] uppercase tabular-nums"
-              data-testid="tour-progress"
-            >
-              {{ current === 0 ? 'Quick tour' : current + ' of ' + (steps.length - 1) }}
-            </span>
+            <div class="flex min-w-0 items-center gap-2">
+              @if (current > 0) {
+                <ng-container
+                  *ngTemplateOutlet="avatar; context: { $implicit: 'size-6 shrink-0' }"
+                />
+                <span class="text-foreground text-sm font-semibold" data-testid="tour-guide"
+                  >Dua</span
+                >
+              }
+              <span
+                class="text-muted-foreground text-xs font-medium tracking-[0.04em] uppercase tabular-nums"
+                data-testid="tour-progress"
+              >
+                {{ current === 0 ? 'Quick tour' : current + ' of ' + (steps.length - 1) }}
+              </span>
+            </div>
             <button
               type="button"
               class="text-muted-foreground hover:bg-muted hover:text-foreground -mt-1.5 -mr-2 flex size-7 cursor-pointer items-center justify-center rounded-lg transition-colors"
@@ -275,6 +289,10 @@ let nextTourId = 0;
         </section>
       }
     </div>
+
+    <ng-template #avatar let-size>
+      <app-dua-figure [class]="size" data-testid="tour-avatar" />
+    </ng-template>
   `,
   styles: [
     `
@@ -301,6 +319,18 @@ let nextTourId = 0;
         transition: all 200ms;
       }
 
+      /* Dua bobs up to say hello on the welcome step. */
+      .tour-avatar-hello {
+        animation: tour-hello 520ms cubic-bezier(0.34, 1.56, 0.64, 1) 80ms both;
+      }
+
+      @keyframes tour-hello {
+        from {
+          opacity: 0;
+          transform: translateY(10px) scale(0.7) rotate(-8deg);
+        }
+      }
+
       @keyframes tour-fade-in {
         from {
           opacity: 0;
@@ -321,7 +351,8 @@ let nextTourId = 0;
         }
 
         .tour-scrim,
-        .tour-card {
+        .tour-card,
+        .tour-avatar-hello {
           animation: none;
         }
       }

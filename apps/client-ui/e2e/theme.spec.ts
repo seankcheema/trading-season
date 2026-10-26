@@ -133,7 +133,7 @@ test.describe('Theme', () => {
     await expect(panel).toHaveCSS('background-color', 'rgb(255, 255, 255)');
     await expect(panel).toHaveCSS('color', 'rgb(14, 14, 14)');
 
-    for (const choice of ['Daily Review', 'My Holdings']) {
+    for (const choice of ['Daily Review', 'Portfolio Analysis']) {
       await panel.getByRole('button', { name: choice, exact: true }).click();
       const card = panel.locator('.insight-card:not(.inactive)');
       await expect(card.locator('.primary-metric strong')).toHaveCSS('color', 'rgb(14, 14, 14)');

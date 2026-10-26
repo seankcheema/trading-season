@@ -38,7 +38,7 @@ button {
   height: 100%;
   overflow: hidden;
   border-radius: inherit;
-  background: #eefaff;
+  background: var(--dua-face);
 }
 .launcher-art {
   position: relative;
@@ -53,39 +53,9 @@ button {
 .launcher-art.face-visible {
   transform: translateY(-10px) scale(1.35);
 }
-.launcher-body,
-.launcher-fin {
+.launcher-art app-dua-figure {
   position: absolute;
   inset: 0;
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-/* The fin is its own layer so it can wiggle about its base, where it meets the head. */
-.launcher-fin {
-  transform-origin: 52.7% 50.4%;
-}
-.dua-launcher:hover .launcher-fin {
-  animation: fin-wiggle 600ms ease-in-out;
-}
-@keyframes fin-wiggle {
-  0%,
-  100% {
-    transform: rotate(0deg);
-  }
-  20% {
-    transform: rotate(5deg);
-  }
-  45% {
-    transform: rotate(-4deg);
-  }
-  70% {
-    transform: rotate(3deg);
-  }
-  85% {
-    transform: rotate(-1.5deg);
-  }
 }
 .notification-count {
   position: absolute;
@@ -103,14 +73,6 @@ button {
   line-height: 17px;
   text-align: center;
   pointer-events: none;
-}
-.fallback {
-  display: grid;
-  height: 100%;
-  place-items: center;
-  color: #0e0e0e;
-  font-size: 12px;
-  font-weight: 600;
 }
 .dua-panel {
   position: absolute;
@@ -156,10 +118,9 @@ button {
   flex-shrink: 0;
   overflow: hidden;
   border-radius: 50%;
-  background: #eefaff;
-  color: #0e0e0e;
+  background: var(--dua-face);
 }
-.dua-avatar img {
+.dua-avatar app-dua-figure {
   width: 100%;
   height: 100%;
 }
@@ -179,7 +140,9 @@ h2 {
   gap: 8px;
   font-size: 18px;
 }
-.plan-label {
+.market-note {
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: 12px;
   font-weight: 400;
   color: var(--muted-foreground);
@@ -216,6 +179,7 @@ p {
   font-size: 14px;
   line-height: 1.45;
 }
+
 .choices {
   display: grid;
   gap: 8px;
@@ -237,126 +201,6 @@ p {
 .choices button:hover {
   border-color: color-mix(in srgb, var(--primary) 40%, transparent);
   background: color-mix(in srgb, var(--primary) 6%, transparent);
-}
-/* The volatility outlook choice: a gradient border that breathes, so it reads as live. */
-.choices button.choice-outlook {
-  position: relative;
-  border: 1px solid transparent;
-  background:
-    linear-gradient(var(--card), var(--card)) padding-box,
-    linear-gradient(120deg, var(--primary), var(--color-loss), var(--primary)) border-box;
-  box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 45%, transparent);
-  animation: outlook-pulse 2.4s ease-in-out infinite;
-}
-.choices button.choice-outlook:hover {
-  background:
-    linear-gradient(
-        color-mix(in srgb, var(--primary) 8%, var(--card)),
-        color-mix(in srgb, var(--primary) 8%, var(--card))
-      )
-      padding-box,
-    linear-gradient(120deg, var(--primary), var(--color-loss), var(--primary)) border-box;
-}
-@keyframes outlook-pulse {
-  0%,
-  100% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 45%, transparent);
-  }
-  50% {
-    box-shadow: 0 0 0 6px color-mix(in srgb, var(--primary) 0%, transparent);
-  }
-}
-.choice-icon-outlook {
-  background: linear-gradient(135deg, var(--primary), var(--color-loss));
-  color: var(--primary-foreground);
-}
-/* The What's trending choice: the same live treatment with the gain colour and a bolt. */
-.choices button.choice-trending {
-  position: relative;
-  border: 1px solid transparent;
-  background:
-    linear-gradient(var(--card), var(--card)) padding-box,
-    linear-gradient(120deg, var(--color-gain), var(--primary), var(--color-gain)) border-box;
-  box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-gain) 45%, transparent);
-  animation: trending-pulse 2.4s ease-in-out infinite;
-  animation-delay: 1.2s;
-}
-.choices button.choice-trending:hover {
-  background:
-    linear-gradient(
-        color-mix(in srgb, var(--color-gain) 8%, var(--card)),
-        color-mix(in srgb, var(--color-gain) 8%, var(--card))
-      )
-      padding-box,
-    linear-gradient(120deg, var(--color-gain), var(--primary), var(--color-gain)) border-box;
-}
-@keyframes trending-pulse {
-  0%,
-  100% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-gain) 45%, transparent);
-  }
-  50% {
-    box-shadow: 0 0 0 6px color-mix(in srgb, var(--color-gain) 0%, transparent);
-  }
-}
-.choice-icon-trending {
-  background: linear-gradient(135deg, var(--color-gain), var(--primary));
-  color: var(--primary-foreground);
-}
-.choice-icon-trending ng-icon {
-  animation: bolt-flicker 2.4s ease-in-out infinite;
-}
-@keyframes bolt-flicker {
-  0%,
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.75;
-    transform: scale(1.12);
-  }
-}
-.choice-badge {
-  margin-left: 6px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--color-loss) 18%, transparent);
-  padding: 1px 6px;
-  color: var(--color-loss);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  vertical-align: middle;
-}
-.outlook-cta {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  margin-bottom: 10px;
-  border-radius: 12px;
-  background: linear-gradient(
-    120deg,
-    var(--primary),
-    color-mix(in srgb, var(--primary) 70%, var(--color-loss))
-  );
-  padding: 11px 12px;
-  color: var(--primary-foreground);
-  font-size: 13px;
-  font-weight: 700;
-  text-decoration: none;
-  box-shadow: 0 6px 18px color-mix(in srgb, var(--primary) 30%, transparent);
-}
-.outlook-cta:hover {
-  filter: brightness(1.08);
-  text-decoration: none;
-}
-@media (prefers-reduced-motion: reduce) {
-  .choices button.choice-outlook,
-  .choices button.choice-trending,
-  .choice-icon-trending ng-icon {
-    animation: none;
-  }
 }
 .choice-icon {
   display: grid;
@@ -541,7 +385,7 @@ article h3 {
   letter-spacing: 0;
 }
 .primary-metric .compact-value {
-  font-size: 36px;
+  font-size: 20px;
 }
 .insight-sparkline {
   display: block;
@@ -610,9 +454,6 @@ article h3 {
   .launcher-art,
   .choices button {
     transition: none;
-  }
-  .dua-launcher:hover .launcher-fin {
-    animation: none;
   }
 }
 
@@ -699,10 +540,21 @@ article h3 {
 .header-title h2 {
   flex: 0 1 auto;
 }
-.header-timestamp {
-  font-size: 9px;
+.header-title.with-account {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+}
+.header-title.with-account h2 {
+  max-width: 100%;
+}
+.header-account {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
   line-height: 1.3;
-  max-width: 90px;
 }
 .explain-action {
   margin-top: 12px;
@@ -735,7 +587,7 @@ article h3 {
   gap: 4px;
 }
 .daily-metrics dd {
-  font-size: 54px;
+  font-size: 20px;
 }
 .daily-metrics dd ng-icon {
   font-size: 28px;
@@ -753,18 +605,6 @@ article h3 {
   align-self: flex-start;
   margin-top: auto;
   padding-top: 16px;
-}
-.stock-list {
-  list-style: none;
-  padding: 0;
-  margin: 8px 0 0;
-  font-size: 11px;
-}
-.stock-list li {
-  display: flex;
-  justify-content: space-between;
-  gap: 6px;
-  padding: 1px 0;
 }
 .insight-card .takeaway {
   margin-bottom: 8px;
@@ -785,24 +625,6 @@ article h3 {
 .insight-card h3,
 .explain-action {
   flex-shrink: 0;
-}
-.stock-list {
-  max-height: 96px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
-  line-height: 1.4;
-  font-variant-numeric: tabular-nums;
-}
-.stock-list .gain {
-  color: var(--color-gain, #25eb69);
-}
-.stock-list .loss {
-  color: var(--color-loss, #ff3d5a);
-}
-.stock-list:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: -2px;
 }
 
 .dua-panel:has(.insight-card, .insight-explanation) {
@@ -872,30 +694,12 @@ article h3 {
 }
 .primary-metric dd ng-icon,
 .daily-metrics dd ng-icon {
-  font-size: 36px;
-}
-.today-metrics {
-  grid-template-columns: minmax(0, 1.8fr) minmax(0, 1fr);
-  align-items: center;
-  gap: 10px;
-}
-.today-metrics .primary-metric {
-  grid-column: auto;
-}
-.today-metrics .primary-metric dd {
-  font-size: clamp(36px, 11vw, 48px);
-  font-weight: 600;
-}
-.today-metrics .primary-metric strong {
-  font-weight: 600;
-}
-.today-metrics > div:not(.primary-metric) dd {
-  font-size: 22px;
+  font-size: 20px;
 }
 
 .overview-metrics .primary-metric dd ng-icon,
 .overview-metrics.daily-metrics dd ng-icon {
-  font-size: 36px;
+  font-size: 20px;
 }
 
 .card-meta {
@@ -916,9 +720,9 @@ article h3 {
 .card-heading .explain-action {
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
+  width: auto;
+  min-height: 28px;
+  border-radius: 6px;
   text-decoration: none;
 }
 .card-heading .explain-action ng-icon {
@@ -964,13 +768,13 @@ article h3 {
   font-size: clamp(46px, 12vw, 64px);
 }
 .insight-card .overview-metrics.daily-metrics dd {
-  font-size: 54px;
+  font-size: 20px;
 }
 .insight-card .overview-metrics .compact-value {
   font-size: 18px;
 }
 .insight-card .overview-metrics .primary-metric .compact-value {
-  font-size: 36px;
+  font-size: 20px;
 }
 .insight-card .overview-metrics strong {
   font-weight: 600;
@@ -1119,6 +923,309 @@ article h3 {
 
 /* While the panel animates between sizes its content is briefly taller than the panel, so
    scrolling is off until the new size is reached rather than flashing a scrollbar. */
-.dua-panel.resizing :is(.dua-body, .card-content, .stock-list) {
+.dua-panel.resizing :is(.dua-body, .card-content) {
   overflow: hidden;
+}
+
+/* Constrain intrinsic grid sizing as well as the outer panel. */
+.dua-panel {
+  width: min(360px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+}
+.dua-body,
+.choices,
+.choices button,
+.choice-copy,
+.card-content {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.choices {
+  grid-template-columns: minmax(0, 1fr);
+}
+.choice-copy small {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.card-content {
+  overflow-wrap: anywhere;
+}
+.explain-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: auto;
+  white-space: nowrap;
+  font-size: 10px;
+}
+.guidance-headline {
+  font-size: 23px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--dua-heading);
+}
+.guidance-description {
+  margin: 10px 0;
+  font-size: 13px;
+  color: var(--dua-copy);
+}
+.insight-card .overview-metrics dd,
+.insight-card .overview-metrics .primary-metric dd {
+  font-size: 24px;
+}
+.update-action {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 5px 10px;
+  background: var(--card);
+}
+.simulation-notice {
+  padding: 8px 18px;
+}
+.new-label {
+  font-size: 10px;
+  color: var(--dua-notification-blue);
+  margin-left: 5px;
+}
+@property --dua-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+.choices button.unread {
+  border: 1px solid transparent;
+  background:
+    linear-gradient(var(--card), var(--card)) padding-box,
+    conic-gradient(
+        from var(--dua-angle),
+        var(--border) 45%,
+        var(--dua-notification-blue),
+        var(--border) 85%
+      )
+      border-box;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--dua-notification-blue) 25%, transparent);
+  animation: dua-unread 3s linear infinite;
+}
+@keyframes dua-unread {
+  to {
+    --dua-angle: 360deg;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .choices button.unread {
+    animation: none;
+    border-color: var(--dua-notification-blue);
+  }
+}
+
+/* Keep each currency amount and its direction icon together. */
+.insight-card .overview-metrics dd,
+.insight-card .overview-metrics.daily-metrics dd,
+.insight-card .overview-metrics .primary-metric dd {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+.overview-metrics dd strong {
+  white-space: nowrap;
+  overflow-wrap: normal;
+  flex: 0 0 auto;
+  letter-spacing: -0.03em;
+}
+.insight-card .overview-metrics dd ng-icon {
+  flex: 0 0 auto;
+  font-size: 20px;
+}
+.overview-metrics .wide-metric {
+  grid-column: 1 / -1;
+}
+.card-heading {
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+.card-heading h3 {
+  flex: 1 1 100px;
+  overflow-wrap: anywhere;
+}
+.card-heading .explain-action {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  height: auto;
+  min-height: 32px;
+  padding: 4px 6px;
+  gap: 4px;
+  border-radius: 6px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.card-heading .explain-action {
+  min-width: 32px;
+  padding: 4px;
+}
+@media (max-width: 380px) {
+  .overview-metrics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.insight-card > .card-meta {
+  flex-shrink: 0;
+  margin: 4px 0 10px;
+}
+
+/* Metrics-first cards: the amount leads and the statement explains it. */
+.insight-card .overview-metrics .primary-metric dd {
+  font-size: 36px;
+  line-height: 1.15;
+}
+.insight-card .overview-metrics .primary-metric dd ng-icon {
+  font-size: 28px;
+}
+.insight-card .overview-metrics .primary-metric .compact-value {
+  font-size: 26px;
+}
+.guidance-statement {
+  margin-top: 12px;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--dua-heading);
+}
+.guidance-description.prominent {
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--dua-heading);
+}
+.guidance-advice {
+  margin-top: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--dua-copy);
+}
+.movers {
+  margin-top: 4px;
+}
+.movers + .movers {
+  margin-top: 16px;
+}
+.movers-heading {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--dua-heading);
+}
+.movers-groups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.insight-card .movers-label {
+  margin: 0 0 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--dua-copy);
+}
+.movers-group ul {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.movers-group li {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.movers-group .ticker-link {
+  font-size: 15px;
+  font-weight: 500;
+}
+.movers-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  font-size: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+  color: var(--dua-heading);
+}
+.movers-value ng-icon {
+  font-size: 18px;
+}
+.movers-value ng-icon.gain {
+  color: var(--dua-gain);
+}
+.movers-value ng-icon.loss {
+  color: var(--dua-loss);
+}
+.insight-card .movers-empty {
+  font-size: 13px;
+  color: var(--dua-copy);
+}
+.retry-action {
+  grid-area: 3 / 1;
+  justify-self: start;
+  margin: 0 18px 8px;
+}
+
+/* Where the volatility estimate sits between smaller and bigger swings. The track box is as
+   tall as the marker and inset by half its width, so nothing overhangs and the card never scrolls. */
+.swing-meter {
+  margin-top: 14px;
+}
+.swing-meter-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  font-size: 11px;
+  color: var(--dua-copy);
+}
+.swing-meter-track {
+  position: relative;
+  height: 14px;
+  margin: 0 7px;
+}
+.swing-meter-track::before {
+  content: '';
+  position: absolute;
+  top: 4px;
+  right: 0;
+  left: 0;
+  height: 6px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--dua-heading) 18%, transparent);
+}
+.swing-meter-mid {
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  left: 50%;
+  width: 1px;
+  background: var(--dua-copy);
+}
+.swing-meter-marker {
+  position: absolute;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+  border: 2px solid var(--dua-base);
+  border-radius: 50%;
+  background: var(--dua-heading);
+  transform: translate(-50%, -50%);
 }

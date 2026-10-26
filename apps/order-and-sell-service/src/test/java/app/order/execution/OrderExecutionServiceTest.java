@@ -237,6 +237,17 @@ class OrderExecutionServiceTest {
         verify(orderRepository, never()).save(any());
     }
 
+    @Test
+    void anInstrumentSuspendedWhileTheOrderWasOpenIsRejected() {
+        Instrument suspended = new Instrument();
+        suspended.setTicker("TEST");
+        suspended.setTradable(false);
+
+        Order result = service.execute(order(Order.TYPE_BUY, "1", "25.00"), suspended);
+
+        assertFailed(result, "BR-05: TEST is not currently tradable");
+    }
+
     private void assertFailed(Order result, String reason) {
         assertEquals(Order.STATUS_REJECTED, result.getStatus());
         assertEquals(reason, result.getRejectionReason());
