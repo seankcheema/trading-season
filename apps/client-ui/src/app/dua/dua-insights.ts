@@ -33,6 +33,8 @@ export interface DuaCard {
   advice?: string;
   /** A position on a two-ended scale, `value` from 0 (left) to 1 (right). */
   meter?: { value: number; left: string; right: string; label: string };
+  /** Marks a card whose call comes from a model forecast, with that forecast's record. */
+  forecast?: { record?: ForecastRecord };
   /** Ranked gainers and losers, optionally one section per period. */
   movers?: {
     heading?: string;
@@ -43,6 +45,52 @@ export interface DuaCard {
       empty: string;
     }[];
   }[];
+}
+
+/** A forecast's closed calls as a forecast card shows them: one line, and hits oldest first. */
+export interface ForecastRecord {
+  label: string;
+  dots: boolean[];
+}
+
+/**
+ * The strong-trend read's record on a stock: its last closed calls, and the closed weeks it
+ * took to make them. Undefined before any call has closed.
+ */
+export function trendForecastRecord(reading: {
+  signalHits: number;
+  signalCalls: number;
+  signalWeeks: number;
+  recent: readonly { hit: boolean }[];
+}): ForecastRecord | undefined {
+  if (!reading.signalCalls) {
+    return undefined;
+  }
+  return {
+    label: `Right ${reading.signalHits} of last ${reading.signalCalls} calls · called ${reading.signalCalls} of ${reading.signalWeeks} weeks`,
+    dots: [...reading.recent].reverse().map((read) => read.hit),
+  };
+}
+
+/** The volatility outlook's record: the leading reader's hits over its last closed weeks. */
+export function outlookForecastRecord(reading: {
+  source: 'model' | 'rule';
+  modelHits: number;
+  modelDays: number;
+  ruleHits: number;
+  ruleDays: number;
+  recent: readonly { hit: boolean }[];
+}): ForecastRecord | undefined {
+  const model = reading.source === 'model';
+  const hits = model ? reading.modelHits : reading.ruleHits;
+  const days = model ? reading.modelDays : reading.ruleDays;
+  if (!days) {
+    return undefined;
+  }
+  return {
+    label: `Right ${hits} of last ${days} weeks`,
+    dots: [...reading.recent].reverse().map((read) => read.hit),
+  };
 }
 
 export function sparklinePoints(values: readonly number[]): string {
