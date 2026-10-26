@@ -78,8 +78,8 @@ button {
   position: absolute;
   right: 0;
   bottom: 84px;
-  width: min(360px, calc(100vw - 32px));
-  max-height: min(560px, calc(100dvh - 116px - env(safe-area-inset-bottom)));
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(640px, calc(100dvh - 116px - env(safe-area-inset-bottom)));
   display: flex;
   flex-direction: column;
   border: 1px solid var(--border);
@@ -929,7 +929,7 @@ article h3 {
 
 /* Constrain intrinsic grid sizing as well as the outer panel. */
 .dua-panel {
-  width: min(360px, calc(100vw - 32px));
+  width: min(420px, calc(100vw - 32px));
   max-width: calc(100vw - 32px);
 }
 .dua-body,
