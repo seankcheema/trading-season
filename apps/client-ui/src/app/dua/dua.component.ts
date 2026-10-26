@@ -93,6 +93,7 @@ const CHOICE_TITLES: Record<DuaChoice, string> = {
     '(document:click)': 'closeOnOutsideClick($event)',
     // Above dialog backdrops (z-50) while a dialog Dua belongs to is open, below the tour.
     '[style.z-index]': 'raised() ? 60 : null',
+    '[class.raised]': 'raised()',
   },
   imports: [
     DuaCountUpDirective,

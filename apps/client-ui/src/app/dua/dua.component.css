@@ -1187,3 +1187,9 @@ article h3 {
   background: var(--dua-heading);
   transform: translate(-50%, -50%);
 }
+
+/* Beside the order dialog Dua keeps its compact size, so it never covers the dialog's buttons. */
+:host(.raised) .dua-panel {
+  width: min(360px, calc(100vw - 32px));
+  max-height: min(560px, calc(100dvh - 116px - env(safe-area-inset-bottom)));
+}
