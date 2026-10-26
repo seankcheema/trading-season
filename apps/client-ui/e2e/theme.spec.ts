@@ -144,10 +144,10 @@ test.describe('Theme', () => {
       await page.screenshot({
         path: `reports/playwright/theme-dua-${choice === 'Daily Review' ? 'daily' : 'holdings'}-light.png`,
       });
-      await card.getByRole('button', { name: 'Explain these numbers' }).click();
-      await expect(panel.locator('.insight-explanation')).toHaveCSS('color', 'rgb(14, 14, 14)');
+      await card.getByRole('button', { name: 'View Details', exact: true }).click();
+      await expect(card.locator('.details-pop')).toHaveCSS('color', 'rgb(14, 14, 14)');
       await page.screenshot({ path: 'reports/playwright/theme-dua-explanation-light.png' });
-      await panel.getByRole('button', { name: 'Back to results' }).click();
+      await card.getByRole('button', { name: 'View Details', exact: true }).click();
       await panel.getByRole('button', { name: 'Back to choices' }).click();
     }
 

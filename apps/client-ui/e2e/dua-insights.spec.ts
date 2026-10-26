@@ -63,10 +63,12 @@ test('compact daily review keeps currency and arrows together and details visibl
       ).toBe(true);
     }
   }
+  // Details open in a popover over the card, and the same button closes it.
   await active.getByRole('button', { name: 'View Details', exact: true }).click();
-  await expect(panel.locator('.insight-explanation')).toBeVisible();
-  await panel.getByRole('button', { name: 'Back to results', exact: true }).click();
+  await expect(active.locator('.details-pop')).toBeVisible();
   await expect(active).toContainText('Your biggest movers');
+  await active.getByRole('button', { name: 'View Details', exact: true }).click();
+  await expect(active.locator('.details-pop')).toHaveCount(0);
 });
 
 test('market auto-opens three choices, preserves dismissal and removes Outlook tab', async ({
@@ -115,7 +117,9 @@ test('legacy outlook links show inline details and respect reduced motion', asyn
   await expect(page.getByRole('button', { name: 'Dua insights', exact: true })).toBeVisible();
   await page.goto('/dashboard/markets/aapl?tab=outlook');
   const panel = page.getByRole('region', { name: 'Dua insights' });
-  await expect(panel.locator('.insight-explanation')).toContainText('Volatility outlook');
+  const card = panel.locator('.insight-card:not(.inactive)');
+  await expect(card.locator('h3')).toHaveText('Volatility outlook');
+  await expect(card.locator('.details-pop')).toBeVisible();
   await expect(page.getByRole('tab', { name: 'Trading', exact: true })).toHaveAttribute(
     'aria-selected',
     'true',
