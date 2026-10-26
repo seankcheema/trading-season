@@ -261,6 +261,45 @@ describe('Dua panel', () => {
       'It does not say whether the price will go up or down.',
     );
   });
+  it('marks forecast cards with a badge, a glowing edge and their record', () => {
+    const { fixture, click } = setup();
+    fixture.componentRef.setInput('symbol', 'AAPL');
+    fixture.detectChanges();
+    click('This Stock');
+    const active = () =>
+      fixture.nativeElement.querySelector('.insight-card:not(.inactive)') as HTMLElement;
+    const record = () => active().querySelector('.forecast-record')?.textContent?.trim() ?? '';
+
+    expect(active().classList).toContain('forecast-card');
+    expect(active().querySelector('.forecast-chip')?.textContent?.trim()).toBe('Model forecast');
+    expect(record()).toBe('Right 16 of last 19 calls · called 19 of 25 weeks');
+    const dots = active().querySelector('.forecast-dots')!;
+    expect(dots.getAttribute('aria-label')).toBe('5 of the last 6 calls were right');
+    expect(dots.querySelectorAll('.forecast-dot.hit')).toHaveLength(5);
+
+    click('Next insight');
+    // Momentum is measured, not forecast.
+    expect(active().classList).not.toContain('forecast-card');
+    expect(active().querySelector('.forecast-chip')).toBeNull();
+
+    click('Next insight');
+    expect(active().classList).toContain('forecast-card');
+    expect(record()).toMatch(/^Right \d+ of last \d+ weeks$/);
+  });
+  it('marks the buy or sell suggestion as a forecast with its record', () => {
+    const { fixture, click } = setup();
+    click('Portfolio Analysis');
+    click('Next insight');
+    click('Next insight');
+    const card = fixture.nativeElement.querySelector('.insight-card:not(.inactive)') as HTMLElement;
+    expect(card.querySelector('.guidance-headline')?.textContent?.trim()).toBe(
+      'Consider buying AAPL.',
+    );
+    expect(card.classList).toContain('forecast-card');
+    expect(card.querySelector('.forecast-record')?.textContent?.trim()).toBe(
+      'Right 16 of last 19 calls · called 19 of 25 weeks',
+    );
+  });
   it('says there is no clear direction when the trend read makes no call', () => {
     const forecasts = trend.trend();
     const days = forecasts.symbols.AAPL.days;
