@@ -321,21 +321,47 @@ describe('Dua panel', () => {
     expect(active().classList).toContain('forecast-card');
     expect(record()).toMatch(/^Right \d+ of last \d+ weeks$/);
   });
-  it('links each forecast card to the forecast drawer for its stock', () => {
+  it('opens the forecast details in a small popover by its record, not another window', () => {
     const { fixture, click } = setup();
     fixture.componentRef.setInput('symbol', 'AAPL');
     fixture.detectChanges();
     click('This Stock');
-    const link = () =>
-      fixture.nativeElement.querySelector(
-        '.insight-card:not(.inactive) .forecast-link',
-      ) as HTMLAnchorElement | null;
-    expect(link()?.textContent?.trim()).toBe('See the forecast');
-    expect(link()?.getAttribute('href')).toBe('/dashboard/markets/aapl?forecast=open');
+    const el = fixture.nativeElement as HTMLElement;
+    const toggle = () =>
+      el.querySelector('.insight-card:not(.inactive) .forecast-record') as HTMLButtonElement;
+    const pop = () => el.querySelector('.insight-card:not(.inactive) .forecast-pop');
+    expect(el.querySelector('.forecast-link')).toBeNull();
+    expect(pop()).toBeNull();
+    expect(toggle().getAttribute('aria-expanded')).toBe('false');
+
+    toggle().click();
+    fixture.detectChanges();
+    expect(toggle().getAttribute('aria-expanded')).toBe('true');
+    const text = pop()!.textContent!.replace(/\s+/g, ' ');
+    expect(text).toContain('Right 16 of the last 19 calls');
+    expect(text).toContain('Called 19 of the last 25 weeks');
+    expect(text).toContain(
+      'Simple pattern, "Keeps going the same way": right 12 of the last 20 weeks.',
+    );
+    expect(text).toContain('it can be wrong');
+
+    // Escape closes the popover only; Dua stays open.
+    pop()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    fixture.detectChanges();
+    expect(pop()).toBeNull();
+    expect(session.minimized()).toBe(false);
+
+    // A click elsewhere closes it, and so does moving to another card.
+    toggle().click();
+    fixture.detectChanges();
+    (el.querySelector('.insight-card:not(.inactive) h3') as HTMLElement).click();
+    fixture.detectChanges();
+    expect(pop()).toBeNull();
+    toggle().click();
+    fixture.detectChanges();
     click('Next insight');
-    expect(link()).toBeNull();
-    click('Next insight');
-    expect(link()?.getAttribute('href')).toBe('/dashboard/markets/aapl?forecast=open');
+    click('Previous insight');
+    expect(pop()).toBeNull();
   });
   it('marks the buy or sell suggestion as a forecast with its record', () => {
     const { fixture, click } = setup();
