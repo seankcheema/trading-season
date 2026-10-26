@@ -17,6 +17,7 @@ let nextFigureId = 0;
     'aria-hidden': 'true',
     '[attr.data-mood]': 'mood()',
     '[class.wiggle]': 'wiggle()',
+    '[class.sweating]': 'sweating()',
   },
   template: `
     <svg viewBox="0 0 512 512" focusable="false">
@@ -119,6 +120,13 @@ let nextFigureId = 0;
     .drop {
       fill: var(--dua-face-accent);
       stroke-width: 10;
+      transform-box: fill-box;
+      transform-origin: 50% 0;
+    }
+
+    /* The drop swells at the temple, hangs, then gathers speed down the cheek and fades. */
+    :host(.sweating) .drop {
+      animation: dua-sweat 2.4s ease-in infinite;
     }
 
     .fin {
@@ -147,6 +155,26 @@ let nextFigureId = 0;
       transform: translate(18px, 52px) rotate(14deg);
     }
 
+    @keyframes dua-sweat {
+      0% {
+        opacity: 0;
+        transform: translateY(-4px) scale(0.4);
+      }
+      14% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+      42% {
+        opacity: 1;
+        transform: translateY(4px) scale(1);
+      }
+      80%,
+      100% {
+        opacity: 0;
+        transform: translateY(44px) scale(0.85);
+      }
+    }
+
     @keyframes dua-fin-wiggle {
       0%,
       100% {
@@ -171,7 +199,8 @@ let nextFigureId = 0;
         transition: none;
       }
 
-      :host(.wiggle) .fin {
+      :host(.wiggle) .fin,
+      :host(.sweating) .drop {
         animation: none;
       }
     }
@@ -184,6 +213,9 @@ export class DuaFigureComponent {
   readonly framed = input(true);
   // Waggles the fin once each time this turns on.
   readonly wiggle = input(false);
+  // While on, the worried face's sweat drop runs down and forms again, for a lockout or a
+  // similar moment of real worry. Other moods have no drop, so it changes nothing there.
+  readonly sweating = input(false);
 
   protected readonly clipId = `dua-figure-clip-${nextFigureId++}`;
   protected readonly clip = computed(() => (this.framed() ? `url(#${this.clipId})` : null));
