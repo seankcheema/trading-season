@@ -12,7 +12,7 @@ import {
 } from '@angular/core';
 import { DatePipe, NgTemplateOutlet } from '@angular/common';
 import { ForecastRecord, outlookForecastRecord, trendForecastRecord } from '../../dua/dua-insights';
-import { ForecastTrackComponent } from '../../dua/forecast-track.component';
+import { ForecastConfidenceComponent } from '../../dua/forecast-confidence.component';
 import { PlatformSignalsService } from '../risk-outlook/platform-signals.service';
 import { readingFor } from '../risk-outlook/platform-signals';
 import { PlatformTrendService } from '../trend-read/platform-trend.service';
@@ -27,7 +27,7 @@ import { trendReadingFor } from '../trend-read/platform-trend';
 @Component({
   selector: 'app-forecast-drawer',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DatePipe, ForecastTrackComponent, NgTemplateOutlet],
+  imports: [DatePipe, ForecastConfidenceComponent, NgTemplateOutlet],
   host: {
     role: 'complementary',
     '[attr.aria-label]': "symbol() + ' forecast'",
@@ -108,6 +108,10 @@ import { trendReadingFor } from '../trend-read/platform-trend';
       <details class="drawer-more" data-testid="forecast-why">
         <summary>Why these calls</summary>
         <div class="drawer-more-body">
+          <p class="drawer-why">
+            Confidence is how often each forecast's recent calls were right, over weeks that had
+            already closed.
+          </p>
           @if (trend()?.kind === 'ready') {
             <p class="drawer-why">{{ directionWhy() }}</p>
             @if (directionRecord()?.coverage; as coverage) {
@@ -156,8 +160,7 @@ import { trendReadingFor } from '../trend-read/platform-trend';
     <ng-template #recordRow let-record>
       @if (record) {
         <div class="drawer-record">
-          <app-forecast-track [hits]="record.hits" [total]="record.total" [unit]="record.unit" />
-          <span>Right {{ record.hits }} of last {{ record.total }} {{ record.unit }}</span>
+          <app-forecast-confidence [record]="record" />
         </div>
       } @else {
         <p class="drawer-why">No closed weeks yet, so there is no record to show.</p>

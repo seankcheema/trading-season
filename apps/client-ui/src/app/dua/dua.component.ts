@@ -67,7 +67,7 @@ import { DuaFigureComponent, DuaMood } from './dua-figure.component';
 import { duaGreeting, duaMarketNote } from './dua-greeting';
 import { DuaSpeech } from './dua-speech.service';
 import { DuaSpeechBubbleComponent } from './dua-speech-bubble.component';
-import { ForecastTrackComponent } from './forecast-track.component';
+import { ForecastConfidenceComponent } from './forecast-confidence.component';
 import { SessionTimeoutService } from '../core/auth/session-timeout.service';
 
 // Clicks on the launcher within this long that set off Dua's barrel roll.
@@ -98,7 +98,7 @@ const CHOICE_TITLES: Record<DuaChoice, string> = {
     DuaCountUpDirective,
     DuaFigureComponent,
     DuaSpeechBubbleComponent,
-    ForecastTrackComponent,
+    ForecastConfidenceComponent,
     NgIcon,
     NgTemplateOutlet,
     RouterLink,

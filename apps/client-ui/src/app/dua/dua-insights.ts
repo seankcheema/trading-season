@@ -56,12 +56,17 @@ export interface ForecastRecord {
   hits: number;
   total: number;
   unit: 'calls' | 'weeks';
+  /** The hit rate as a whole percentage, shown as the forecast's confidence score. */
+  percent: number;
+  /** Whether the forecast is making a call now; a confidence score reads oddly on "no call". */
+  called: boolean;
   coverage?: string;
   baseline?: { label: string; hits: number; total: number };
 }
 
 /** The strong-trend read's record on a stock. Undefined before any call has closed. */
 export function trendForecastRecord(reading: {
+  call: 'up' | 'down' | null;
   signalHits: number;
   signalCalls: number;
   signalWeeks: number;
@@ -75,6 +80,8 @@ export function trendForecastRecord(reading: {
     hits: reading.signalHits,
     total: reading.signalCalls,
     unit: 'calls',
+    percent: Math.round((reading.signalHits / reading.signalCalls) * 100),
+    called: reading.call !== null,
     coverage: `Called ${reading.signalCalls} of the last ${reading.signalWeeks} weeks; it makes no call on weeks too weak to read.`,
     baseline: reading.ruleDays
       ? { label: 'Keeps going the same way', hits: reading.ruleHits, total: reading.ruleDays }
@@ -98,13 +105,16 @@ export function outlookForecastRecord(reading: {
   if (!total) {
     return undefined;
   }
+  const hits = model ? reading.modelHits : reading.ruleHits;
   const other = model
     ? { label: 'Like last week', hits: reading.ruleHits, total: reading.ruleDays }
     : { label: 'The model alone', hits: reading.modelHits, total: reading.modelDays };
   return {
-    hits: model ? reading.modelHits : reading.ruleHits,
+    hits,
     total,
     unit: 'weeks',
+    percent: Math.round((hits / total) * 100),
+    called: true,
     baseline: other.total ? other : undefined,
   };
 }

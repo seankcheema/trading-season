@@ -186,14 +186,7 @@
                       [attr.aria-controls]="'forecast-pop-' + cardIndex"
                       (click)="toggleRecord(cardIndex)"
                     >
-                      <app-forecast-track
-                        [hits]="record.hits"
-                        [total]="record.total"
-                        [unit]="record.unit"
-                      />
-                      <span
-                        >Right {{ record.hits }} of last {{ record.total }} {{ record.unit }}</span
-                      >
+                      <app-forecast-confidence [record]="record" />
                       <span class="forecast-record-more" aria-hidden="true"></span>
                     </button>
                     @if (recordOpen() === cardIndex) {
@@ -204,7 +197,8 @@
                         [id]="'forecast-pop-' + cardIndex"
                       >
                         <p class="forecast-pop-title">
-                          Right {{ record.hits }} of the last {{ record.total }} {{ record.unit }}
+                          Based on its last {{ record.total }} {{ record.unit }}: right on
+                          {{ record.hits }}.
                         </p>
                         @if (record.coverage) {
                           <p>{{ record.coverage }}</p>
