@@ -40,8 +40,6 @@ import {
   lucideInfo,
   lucideNewspaper,
   lucideScanSearch,
-  lucideMaximize2,
-  lucideMinimize2,
   lucideX,
   lucideZap,
 } from '@ng-icons/lucide';
@@ -89,6 +87,9 @@ const CHOICE_TITLES: Record<DuaChoice, string> = {
   trending: "What's trending",
 };
 
+// The smallest size the panel can be dragged to.
+const DUA_MIN_SIZE = { width: 320, height: 360 };
+
 @Component({
   selector: 'app-dua',
   host: {
@@ -116,8 +117,6 @@ const CHOICE_TITLES: Record<DuaChoice, string> = {
       lucideChevronRight,
       lucideExternalLink,
       lucideInfo,
-      lucideMaximize2,
-      lucideMinimize2,
       lucideNewspaper,
       lucideScanSearch,
       lucideX,
@@ -722,7 +721,6 @@ export class DuaComponent {
       this.choice();
       this.activeCard();
       this.cards();
-      this.session.expanded();
       const minimized = this.session.minimized();
       const panel = this.panel()?.nativeElement;
       if (!panel) {
@@ -858,8 +856,76 @@ export class DuaComponent {
     return { takeaway: `${symbol}'s swings are about usual: ${sizes}.` };
   }
 
-  protected toggleExpanded(): void {
-    this.session.expanded.set(!this.session.expanded());
+  // Free resize from the panel's top-left corner. The panel is anchored bottom-right, so dragging
+  // up and to the left makes it larger.
+  private resizeStart: { x: number; y: number; width: number; height: number } | null = null;
+
+  protected startResize(event: PointerEvent): void {
+    const panel = this.panel()?.nativeElement;
+    if (event.button !== 0 || !panel) {
+      return;
+    }
+    this.resizeStart = {
+      x: event.clientX,
+      y: event.clientY,
+      width: panel.offsetWidth,
+      height: panel.offsetHeight,
+    };
+    (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+  }
+
+  protected moveResize(event: PointerEvent): void {
+    const start = this.resizeStart;
+    if (start) {
+      this.setSize(start.width + start.x - event.clientX, start.height + start.y - event.clientY);
+    }
+  }
+
+  protected endResize(event: PointerEvent): void {
+    this.resizeStart = null;
+    (event.currentTarget as HTMLElement).releasePointerCapture?.(event.pointerId);
+  }
+
+  /** Arrow keys grow or shrink the panel in steps, and Home puts it back to its default size. */
+  protected resizeByKey(event: KeyboardEvent): void {
+    const panel = this.panel()?.nativeElement;
+    if (!panel) {
+      return;
+    }
+    const step = 24;
+    const { offsetWidth: width, offsetHeight: height } = panel;
+    const sizes: Record<string, [number, number] | null> = {
+      ArrowLeft: [width + step, height],
+      ArrowRight: [width - step, height],
+      ArrowUp: [width, height + step],
+      ArrowDown: [width, height - step],
+      Home: null,
+    };
+    if (!(event.key in sizes)) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    const size = sizes[event.key];
+    if (size) {
+      this.setSize(...size);
+    } else {
+      this.resetSize();
+    }
+  }
+
+  protected resetSize(): void {
+    this.session.size.set(null);
+  }
+
+  private setSize(width: number, height: number): void {
+    const clamp = (value: number, min: number, max: number) =>
+      Math.round(Math.min(Math.max(value, min), Math.max(min, max)));
+    this.session.size.set({
+      width: clamp(width, DUA_MIN_SIZE.width, window.innerWidth - 32),
+      height: clamp(height, DUA_MIN_SIZE.height, window.innerHeight - 116),
+    });
   }
 
   protected toggleDetails(index: number): void {

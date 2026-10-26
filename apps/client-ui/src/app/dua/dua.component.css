@@ -1202,16 +1202,60 @@ article h3 {
   color: var(--dua-swing-less);
 }
 
-/* Expanded, for reading at length; capped to the viewport. Phones already get the full width. */
-.dua-panel.expanded {
-  width: min(640px, calc(100vw - 32px));
-  max-height: min(820px, calc(100dvh - 116px - env(safe-area-inset-bottom)));
+/*
+ * The resize grip in the panel's top-left corner. A dragged size is set on the panel inline and
+ * is still capped by the panel's max-width and max-height; phones keep the full-width panel.
+ */
+.resize-grip {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 14px 4px 4px 4px;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: nwse-resize;
+  touch-action: none;
 }
-.dua-panel.expanded .insights .insight-card {
-  max-height: min(640px, calc(100dvh - 200px));
+.resize-grip svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+.resize-grip:hover,
+.resize-grip:focus-visible {
+  color: var(--primary);
+}
+.resize-grip:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+.dua-panel.resized {
+  max-height: calc(100dvh - 116px - env(safe-area-inset-bottom));
+}
+.dua-panel.resized .insights .insight-card {
+  max-height: none;
+}
+/* A taller panel gives its room to the card, so page controls and notes stay at the bottom. */
+.dua-panel.resized .dua-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+.dua-panel.resized .insights {
+  flex: 1 1 auto;
 }
 @media (max-width: 700px) {
-  .expand-button {
+  .resize-grip {
     display: none;
   }
 }
