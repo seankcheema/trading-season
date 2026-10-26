@@ -74,7 +74,7 @@ export class LoginComponent {
     return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
   });
   // Dua covers its eyes while the password is typed, peeks once it is shown, and looks
-  // worried at a failed or locked sign-in.
+  // worried at a failed or locked sign-in; while locked, the template also makes it sweat.
   protected readonly duaMood = computed<DuaMood>(() => {
     if (this.locked()) {
       return 'worried';
