@@ -20,6 +20,7 @@ import {
   inject,
   input,
   model,
+  output,
   signal,
   untracked,
   viewChild,
@@ -243,6 +244,18 @@ const TOOLTIP_GAP_PX = 10;
             </button>
           }
         </div>
+        @if (showForecast()) {
+          <button
+            type="button"
+            class="forecast-toggle"
+            [attr.aria-pressed]="forecastOpen()"
+            [title]="forecastOpen() ? 'Hide the model forecast' : 'Show the model forecast'"
+            (click)="forecastToggle.emit()"
+          >
+            <span class="forecast-toggle-mark" aria-hidden="true"></span>
+            Forecast
+          </button>
+        }
       }
       <div class="chart-top-right">
         @if (showIndicatorLabels() && priceIndicatorsEnabled().length) {
@@ -599,6 +612,36 @@ const TOOLTIP_GAP_PX = 10;
       background: #57d7ff;
       color: #08131a;
     }
+    /* The model forecast's door: the same cyan diamond its drawer and Dua's badge wear. */
+    .forecast-toggle {
+      display: inline-flex;
+      flex-shrink: 0;
+      align-items: center;
+      gap: 0.4rem;
+      height: 1.875rem;
+      border: 1px solid color-mix(in srgb, var(--primary) 50%, transparent);
+      border-radius: 0.5rem;
+      background: color-mix(in srgb, var(--primary) 12%, var(--raised));
+      padding: 0 0.7rem;
+      color: var(--primary);
+      font-size: 0.8125rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .forecast-toggle:hover {
+      background: color-mix(in srgb, var(--primary) 20%, var(--raised));
+    }
+    .forecast-toggle[aria-pressed='true'] {
+      background: var(--primary);
+      color: var(--primary-foreground);
+    }
+    .forecast-toggle-mark {
+      width: 0.4rem;
+      height: 0.4rem;
+      border-radius: 1px;
+      background: currentColor;
+      transform: rotate(45deg);
+    }
     .chart-control.live-tailing-control[aria-pressed='true']:hover {
       background: #8ae5ff;
     }
@@ -838,6 +881,10 @@ export class PriceChartComponent {
   readonly tooltipPlacement = input<TooltipPlacement>('point');
   readonly liveTailing = model(false);
   readonly showLiveTailing = input(false);
+  // A Forecast button beside the navigation bar; the page owns the drawer it opens.
+  readonly showForecast = input(false);
+  readonly forecastOpen = input(false);
+  readonly forecastToggle = output<void>();
   readonly showCurrentPrice = input(false, { transform: booleanAttribute });
   readonly showIndicatorLabels = input(true);
   readonly enabledIndicators = input<readonly TechnicalIndicator[]>([]);
