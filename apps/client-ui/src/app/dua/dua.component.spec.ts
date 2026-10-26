@@ -286,6 +286,22 @@ describe('Dua panel', () => {
     expect(active().classList).toContain('forecast-card');
     expect(record()).toMatch(/^Right \d+ of last \d+ weeks$/);
   });
+  it('links each forecast card to the forecast drawer for its stock', () => {
+    const { fixture, click } = setup();
+    fixture.componentRef.setInput('symbol', 'AAPL');
+    fixture.detectChanges();
+    click('This Stock');
+    const link = () =>
+      fixture.nativeElement.querySelector(
+        '.insight-card:not(.inactive) .forecast-link',
+      ) as HTMLAnchorElement | null;
+    expect(link()?.textContent?.trim()).toBe('See the forecast');
+    expect(link()?.getAttribute('href')).toBe('/dashboard/markets/aapl?forecast=open');
+    click('Next insight');
+    expect(link()).toBeNull();
+    click('Next insight');
+    expect(link()?.getAttribute('href')).toBe('/dashboard/markets/aapl?forecast=open');
+  });
   it('marks the buy or sell suggestion as a forecast with its record', () => {
     const { fixture, click } = setup();
     click('Portfolio Analysis');
