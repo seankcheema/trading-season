@@ -455,9 +455,18 @@ describe('Dua panel', () => {
     expect(pop()).toBeNull();
     expect(toggle().getAttribute('aria-expanded')).toBe('false');
 
+    const scrollIntoView = vi.fn();
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scrollIntoView;
+    onTestFinished(() => {
+      Element.prototype.scrollIntoView = original;
+    });
     toggle().click();
     fixture.detectChanges();
     expect(toggle().getAttribute('aria-expanded')).toBe('true');
+    // Opened in a card that scrolls, the popover is brought into view.
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
+    expect(scrollIntoView.mock.contexts[0]).toBe(pop());
     const text = pop()!.textContent!.replace(/\s+/g, ' ');
     expect(text).toContain('Based on its last 19 calls: right on 16.');
     expect(text).toContain('Called 19 of the last 25 weeks');

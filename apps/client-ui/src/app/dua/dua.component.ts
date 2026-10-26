@@ -20,6 +20,7 @@ import {
   Component,
   DestroyRef,
   ElementRef,
+  Injector,
   computed,
   effect,
   inject,
@@ -247,6 +248,7 @@ export class DuaComponent {
   protected readonly snapshotDisconnected = signal(false);
   private readonly launcher = viewChild<ElementRef<HTMLButtonElement>>('launcher');
   private readonly panel = viewChild<ElementRef<HTMLElement>>('panel');
+  private readonly injector = inject(Injector);
   private timers: ReturnType<typeof setTimeout>[] = [];
   // Kept apart from the panel's timers, which opening and closing the panel clear.
   private moveTimers: ReturnType<typeof setTimeout>[] = [];
@@ -974,7 +976,19 @@ export class DuaComponent {
   }
 
   protected toggleRecord(index: number): void {
-    this.recordOpen.set(this.recordOpen() === index ? null : index);
+    const open = this.recordOpen() === index ? null : index;
+    this.recordOpen.set(open);
+    if (open === null) {
+      return;
+    }
+    // A card with less room than it needs scrolls, and the popover may open below what shows.
+    afterNextRender(
+      () =>
+        this.panel()
+          ?.nativeElement.querySelector(`#forecast-pop-${open}`)
+          ?.scrollIntoView?.({ block: 'nearest' }),
+      { injector: this.injector },
+    );
   }
 
   /** Escape closes an open record popover first, and leaves Dua open. */
