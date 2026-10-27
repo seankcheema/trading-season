@@ -621,7 +621,7 @@ describe('MarketPageComponent', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="market-outlook"]')).toBeNull();
   });
 
-  it('opens the forecast drawer over the chart from its Forecast button and closes it', async () => {
+  it('opens the forecast drawer beside the chart, over the tools, and closes it', async () => {
     vi.useFakeTimers();
     try {
       const fixture = await setup('aapl');
@@ -634,13 +634,16 @@ describe('MarketPageComponent', () => {
       fixture.detectChanges();
       expect(button.getAttribute('aria-pressed')).toBe('true');
       const drawer = el.querySelector('app-forecast-drawer')!;
-      expect(drawer.closest('.chart-stage')).not.toBeNull();
-      expect(drawer.closest('.tools-column')).toBeNull();
+      expect(drawer.closest('.tools-column')).not.toBeNull();
+      expect(drawer.closest('.chart-stage')).toBeNull();
+      // The tools it covers are out of reach until it closes.
+      expect(el.querySelector('.insight-panel')!.hasAttribute('inert')).toBe(true);
 
       (el.querySelector('[aria-label="Close forecast"]') as HTMLButtonElement).click();
       fixture.detectChanges();
       vi.runAllTimers();
       expect(el.querySelector('app-forecast-drawer')).toBeNull();
+      expect(el.querySelector('.insight-panel')!.hasAttribute('inert')).toBe(false);
       expect(document.activeElement).toBe(button);
       expect(navigate).not.toHaveBeenCalledWith(
         [],
@@ -649,6 +652,32 @@ describe('MarketPageComponent', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('shows hidden tools for the forecast drawer, and hides them again when it closes', async () => {
+    const fixture = await setup('aapl');
+    const el = fixture.nativeElement as HTMLElement;
+    (el.querySelector('[aria-label="Hide market tools"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(el.querySelector('.market-grid')!.classList).toContain('tools-collapsed');
+
+    (el.querySelector('.forecast-toggle') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(el.querySelector('.market-grid')!.classList).not.toContain('tools-collapsed');
+    expect(el.querySelector('.tools-column app-forecast-drawer')).not.toBeNull();
+
+    (el.querySelector('[aria-label="Close forecast"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(el.querySelector('.market-grid')!.classList).toContain('tools-collapsed');
+
+    // Tools that were showing stay showing.
+    (el.querySelector('[aria-label="Open market tools"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    (el.querySelector('.forecast-toggle') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    (el.querySelector('[aria-label="Close forecast"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(el.querySelector('.market-grid')!.classList).not.toContain('tools-collapsed');
   });
 
   it('opens the forecast drawer from a ?forecast=open link and drops the parameter on close', async () => {
