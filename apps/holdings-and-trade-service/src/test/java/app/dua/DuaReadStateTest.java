@@ -2,6 +2,7 @@ package app.dua;
 
 import app.account.Account;
 import app.account.AccountRepository;
+import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -17,6 +18,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.context.WebApplicationContext;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup;
@@ -29,6 +31,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class DuaReadStateTest {
     @Autowired WebApplicationContext application;
     @Autowired AccountRepository accounts;
+    @Autowired EntityManager entities;
     private MockMvc mvc;
     private UUID owner;
     private Integer accountId;
@@ -59,6 +62,11 @@ class DuaReadStateTest {
         mvc.perform(post("/api/me/dua/read-state/query").with(token(owner)).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"contexts\":[" + context("old") + "," + context("new") + "]}"))
                 .andExpect(jsonPath("$.length()").value(2));
+    }
+    @Test void entityMappingReadsRowsTheRepositoryWrites() throws Exception {
+        mvc.perform(put("/api/me/dua/read-state").with(token(owner)).contentType(MediaType.APPLICATION_JSON)
+                .content(context("mapped"))).andExpect(status().isOk());
+        assertEquals(1, entities.createQuery("SELECT d FROM DuaReadState d", DuaReadState.class).getResultList().size());
     }
     @Test void anotherUserCannotReadOrAcknowledge() throws Exception {
         UUID other = UUID.randomUUID();
