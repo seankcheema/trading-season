@@ -1,15 +1,4 @@
-import {
-  afterNextRender,
-  ChangeDetectionStrategy,
-  Component,
-  computed,
-  effect,
-  ElementRef,
-  inject,
-  input,
-  output,
-  viewChild,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, input } from '@angular/core';
 import { DatePipe, NgTemplateOutlet } from '@angular/common';
 import { ForecastRecord, outlookForecastRecord, trendForecastRecord } from '../../dua/dua-insights';
 import { ForecastConfidenceComponent } from '../../dua/forecast-confidence.component';
@@ -19,44 +8,26 @@ import { PlatformTrendService } from '../trend-read/platform-trend.service';
 import { trendReadingFor } from '../trend-read/platform-trend';
 
 /**
- * The market page's forecast drawer: both model forecasts for the open stock in one place. It
- * leads with each call and its record as one frequency with a track strip, and keeps the reasons
- * and the scoring against simple patterns in two collapsed sections (progressive disclosure).
- * It slides in over the market tools beside the chart, never over the chart itself, and closes on
- * its button or Escape.
+ * The market tools' Forecast tab: both model forecasts for the open stock in one place. It leads
+ * with each call and its record as one frequency with a track strip, and keeps the reasons and the
+ * scoring against simple patterns in two collapsed sections (progressive disclosure).
  */
 @Component({
   selector: 'app-forecast-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [DatePipe, ForecastConfidenceComponent, NgTemplateOutlet],
-  host: {
-    role: 'complementary',
-    '[attr.aria-label]': "symbol() + ' forecast'",
-    'data-testid': 'forecast-panel',
-    '(keydown.escape)': 'closed.emit()',
-  },
+  host: { 'data-testid': 'forecast-panel' },
   template: `
-    <header class="panel-header">
-      <div class="panel-title">
-        <span class="forecast-chip"
-          ><span class="forecast-mark" aria-hidden="true"></span>Model forecast</span
-        >
-        <h2>{{ symbol() }} forecast</h2>
-        @if (asOf(); as day) {
-          <p class="panel-meta">
-            As of the {{ day | date: 'MMM d' }} close · next {{ horizon() }} trading days
-          </p>
-        }
-      </div>
-      <button
-        #closeButton
-        type="button"
-        class="panel-close"
-        aria-label="Close forecast"
-        (click)="closed.emit()"
+    <header class="panel-title">
+      <span class="forecast-chip"
+        ><span class="forecast-mark" aria-hidden="true"></span>Model forecast</span
       >
-        ×
-      </button>
+      <h2>{{ symbol() }} forecast</h2>
+      @if (asOf(); as day) {
+        <p class="panel-meta">
+          As of the {{ day | date: 'MMM d' }} close · next {{ horizon() }} trading days
+        </p>
+      }
     </header>
 
     @if (failed()) {
@@ -179,12 +150,9 @@ import { trendReadingFor } from '../trend-read/platform-trend';
 export class ForecastPanelComponent {
   readonly symbol = input.required<string>();
   readonly marketTimestamp = input.required<string>();
-  readonly closed = output<void>();
 
   private readonly trendStore = inject(PlatformTrendService);
   private readonly signalStore = inject(PlatformSignalsService);
-  private readonly closeButton = viewChild<ElementRef<HTMLButtonElement>>('closeButton');
-  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
   protected readonly failed = computed(
     () => this.trendStore.status() === 'error' && this.signalStore.status() === 'error',
@@ -293,12 +261,6 @@ export class ForecastPanelComponent {
       if (this.signalStore.status() === 'idle') {
         this.signalStore.load().subscribe({ error: () => undefined });
       }
-    });
-    // When it opens, the whole drawer is brought into view (it sits under the chart on smaller
-    // screens) and focus lands in it, so Escape and the keyboard reach it.
-    afterNextRender(() => {
-      this.host.nativeElement.scrollIntoView?.({ block: 'nearest' });
-      this.closeButton()?.nativeElement.focus({ preventScroll: true });
     });
   }
 }

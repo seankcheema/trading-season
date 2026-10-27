@@ -1,39 +1,11 @@
-/*
- * The forecast drawer slides in over the market tools column beside the chart, which positions
- * it, so the chart stays in full view.
- */
+/* The Forecast tab's content, in the flow of the market tools panel that scrolls it. */
 :host {
-  position: absolute;
-  inset: 0;
-  z-index: 20;
   display: flex;
   flex-direction: column;
   gap: 0.9rem;
-  overflow-y: auto;
-  border: 1px solid color-mix(in srgb, var(--primary) 45%, var(--border));
-  border-radius: 0.9rem;
-  background: var(--card);
-  box-shadow:
-    0 18px 40px -16px #000c,
-    0 0 24px -8px color-mix(in srgb, var(--primary) 50%, transparent);
-  padding: 1rem;
   color: var(--card-foreground);
-  animation: forecast-panel-in 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-@keyframes forecast-panel-in {
-  from {
-    opacity: 0;
-    transform: translateX(1.5rem);
-  }
-}
-
-.panel-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.75rem;
-}
 .panel-title {
   display: grid;
   gap: 0.35rem;
@@ -50,25 +22,6 @@
   color: var(--muted-foreground);
   font-size: 0.75rem;
 }
-.panel-close {
-  flex-shrink: 0;
-  width: 1.75rem;
-  height: 1.75rem;
-  border-radius: 0.5rem;
-  color: var(--muted-foreground);
-  font-size: 1.25rem;
-  line-height: 1;
-  cursor: pointer;
-}
-.panel-close:hover {
-  background: color-mix(in srgb, var(--foreground) 10%, transparent);
-  color: var(--foreground);
-}
-.panel-close:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
-}
-
 .forecast-chip {
   display: inline-flex;
   justify-self: start;
@@ -247,9 +200,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  :host {
-    animation: none;
-  }
   .panel-more summary::after {
     transition: none;
   }

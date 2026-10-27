@@ -37,10 +37,12 @@ import {
   TitleCasePipe,
 } from '@angular/common';
 import {
+  afterNextRender,
   ChangeDetectionStrategy,
   Component,
   ElementRef,
   HostListener,
+  Injector,
   NgZone,
   OnDestroy,
   OnInit,
@@ -111,7 +113,7 @@ import { DuaEmptyComponent } from '../dua/dua-empty.component';
 type PageStatus = 'loading' | 'ready' | 'not-found' | 'error';
 type ChartStatus = 'loading' | 'ready' | 'empty' | 'error';
 
-type InsightTab = 'trading' | 'recent-orders';
+type InsightTab = 'trading' | 'recent-orders' | 'forecast';
 
 type ToolbarMenu = 'indicators' | 'chart-mode' | 'comparison';
 
@@ -573,13 +575,17 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   );
   protected readonly liveTailing = signal(true);
   protected readonly duaOutlook = signal(false);
-  // The forecast drawer over the market tools beside the chart, opened by the chart's Forecast
-  // button or ?forecast=open. Opening it shows hidden tools, and closing it hides them again.
-  protected readonly forecastOpen = signal(false);
-  private forecastFromLink = false;
-  private forecastShowedTools = false;
   protected readonly insightTab = signal<InsightTab>('trading');
   protected readonly toolsCollapsed = signal(false);
+  // The market tools' Forecast tab, chosen there, by the chart's Forecast button or by
+  // ?forecast=open. The button reads as pressed while the tab shows; pressed again, it returns to
+  // the tab before, and hides the tools again if opening the forecast had to show them.
+  protected readonly forecastOpen = computed(
+    () => this.insightTab() === 'forecast' && !this.toolsCollapsed(),
+  );
+  private forecastFromLink = false;
+  private tabBeforeForecast: InsightTab = 'trading';
+  private forecastShowedTools = false;
   protected readonly openToolbarMenu = signal<ToolbarMenu | null>(null);
   protected readonly enabledIndicators = signal<readonly TechnicalIndicator[]>([]);
   protected readonly indicatorOptions = [
@@ -835,45 +841,60 @@ export class MarketPageComponent implements OnInit, OnDestroy {
 
   private readonly menuHost = inject(ElementRef<HTMLElement>);
 
+  private readonly injector = inject(Injector);
+
+  protected selectTab(tab: InsightTab): void {
+    const current = this.insightTab();
+    if (tab === current) {
+      return;
+    }
+    if (tab === 'forecast') {
+      this.tabBeforeForecast = current;
+    } else if (current === 'forecast') {
+      this.leaveForecast();
+    }
+    this.insightTab.set(tab);
+  }
+
   protected toggleForecast(): void {
-    if (this.forecastOpen()) {
-      this.closeForecast();
-    } else {
+    if (!this.forecastOpen()) {
       this.openForecast();
+      return;
+    }
+    const hideTools = this.forecastShowedTools;
+    this.selectTab(this.tabBeforeForecast);
+    if (hideTools) {
+      this.toolsCollapsed.set(true);
     }
   }
 
   private openForecast(): void {
-    if (this.forecastOpen()) {
-      return;
-    }
     this.forecastShowedTools = this.toolsCollapsed();
     this.toolsCollapsed.set(false);
-    this.forecastOpen.set(true);
+    this.selectTab('forecast');
+    // Where the tools stack under the chart on smaller screens, the tab is brought into view.
+    afterNextRender(
+      () =>
+        this.menuHost.nativeElement
+          .querySelector('.insight-panel')
+          ?.scrollIntoView?.({ block: 'nearest' }),
+      { injector: this.injector },
+    );
   }
 
-  protected closeForecast(): void {
-    this.forecastOpen.set(false);
-    if (this.forecastShowedTools) {
-      this.forecastShowedTools = false;
-      this.toolsCollapsed.set(true);
+  // Leaving the Forecast tab drops ?forecast=open, so the same link can open it again later.
+  private leaveForecast(): void {
+    this.forecastShowedTools = false;
+    if (!this.forecastFromLink) {
+      return;
     }
-    // Drop ?forecast=open, so the same link can open the drawer again later.
-    if (this.forecastFromLink) {
-      this.forecastFromLink = false;
-      void this.router.navigate([], {
-        relativeTo: this.route,
-        queryParams: { forecast: null },
-        queryParamsHandling: 'merge',
-        replaceUrl: true,
-      });
-    }
-    // Focus goes back to the button that opened the drawer.
-    setTimeout(() =>
-      (
-        this.menuHost.nativeElement.querySelector('.forecast-toggle') as HTMLElement | null
-      )?.focus(),
-    );
+    this.forecastFromLink = false;
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { forecast: null },
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
+    });
   }
   protected readonly toolbarMenuPosition = signal({ left: 0, top: 0 });
 

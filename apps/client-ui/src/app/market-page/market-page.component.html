@@ -601,10 +601,7 @@
             </div>
 
             <aside class="tools-column" [attr.aria-hidden]="toolsCollapsed()">
-              <section
-                class="insight-panel border-border bg-card rounded-xl border p-3"
-                [attr.inert]="forecastOpen() ? '' : null"
-              >
+              <section class="insight-panel border-border bg-card rounded-xl border p-3">
                 <div
                   class="border-border bg-card sticky top-0 z-10 flex items-center border-b pb-2"
                 >
@@ -623,7 +620,7 @@
                       role="tablist"
                       aria-label="Instrument tools"
                     >
-                      @for (tab of ['trading', 'recent-orders']; track tab) {
+                      @for (tab of ['trading', 'recent-orders', 'forecast']; track tab) {
                         <button
                           type="button"
                           role="tab"
@@ -634,7 +631,7 @@
                               : 'text-muted-foreground hover:text-foreground'
                           "
                           [attr.aria-selected]="insightTab() === tab"
-                          (click)="insightTab.set($any(tab))"
+                          (click)="selectTab($any(tab))"
                         >
                           {{ tab === 'recent-orders' ? 'Recent Orders' : (tab | titlecase) }}
                         </button>
@@ -781,15 +778,21 @@
                       </ul>
                     </div>
                   }
+                  @case ('forecast') {
+                    <div
+                      class="insight-content insight-feed"
+                      role="tabpanel"
+                      aria-label="Forecast"
+                      data-testid="market-forecast"
+                    >
+                      <app-forecast-panel
+                        [symbol]="active.symbol"
+                        [marketTimestamp]="marketTimestamp()"
+                      />
+                    </div>
+                  }
                 }
               </section>
-              @if (forecastOpen()) {
-                <app-forecast-panel
-                  [symbol]="active.symbol"
-                  [marketTimestamp]="marketTimestamp()"
-                  (closed)="closeForecast()"
-                />
-              }
             </aside>
           </div>
         }
@@ -799,7 +802,10 @@
 </main>
 
 @if (settingsOpen()) {
-  <app-settings-dialog (closed)="settingsOpen.set(false)" (clockApplied)="onClockSnapshot($event)" />
+  <app-settings-dialog
+    (closed)="settingsOpen.set(false)"
+    (clockApplied)="onClockSnapshot($event)"
+  />
 }
 
 @if (accountDialog(); as dialog) {
