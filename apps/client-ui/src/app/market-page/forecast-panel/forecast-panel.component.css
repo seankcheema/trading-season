@@ -1,21 +1,24 @@
-/* The Forecast tab's content, in the flow of the market tools panel that scrolls it. */
+/*
+ * The Forecast tab's content, in the flow of the market tools panel that scrolls it. Its type
+ * follows the Trading tab's: small muted labels in sentence case and semibold figures.
+ */
 :host {
   display: flex;
   flex-direction: column;
-  gap: 0.9rem;
+  gap: 0.75rem;
   color: var(--card-foreground);
 }
 
 .panel-title {
   display: grid;
-  gap: 0.35rem;
+  gap: 0.3rem;
   min-width: 0;
 }
 .panel-title h2 {
   margin: 0;
-  font-size: 1.125rem;
-  font-weight: 700;
-  line-height: 1.2;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.3;
 }
 .panel-meta {
   margin: 0;
@@ -44,24 +47,75 @@
   transform: rotate(45deg);
 }
 
-/* The summary: each call and its record, nothing else, before anything is opened. */
+/*
+ * The summary: each call and its record, nothing else, before anything is opened. It is one card
+ * lit in the brand hue, as Dua's forecast cards are: a faint cyan edge and glow at rest, drawn as a
+ * conic gradient so a band of light can run once round the edge when the tab opens.
+ */
+@property --forecast-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+@property --forecast-light {
+  syntax: '<color>';
+  initial-value: transparent;
+  inherits: false;
+}
 .panel-summary {
+  --forecast-edge: color-mix(in srgb, var(--primary) 45%, var(--border));
+  --forecast-glint: color-mix(in srgb, var(--primary) 75%, white);
+  --forecast-light: var(--forecast-edge);
   display: grid;
-  gap: 0.75rem;
-  border-top: 1px solid var(--border);
-  padding-top: 0.8rem;
+  gap: 0.7rem;
+  border: 1px solid transparent;
+  border-radius: 0.55rem;
+  padding: 0.7rem 0.75rem;
+  background:
+    radial-gradient(
+        ellipse at 20% 0%,
+        color-mix(in srgb, var(--primary) 12%, transparent),
+        transparent 70%
+      )
+      padding-box,
+    linear-gradient(var(--card), var(--card)) padding-box,
+    conic-gradient(
+        from var(--forecast-angle),
+        var(--forecast-edge) 0deg 280deg,
+        var(--forecast-light) 325deg,
+        var(--forecast-edge) 360deg
+      )
+      border-box;
+  box-shadow: 0 0 22px -10px color-mix(in srgb, var(--primary) 60%, transparent);
+  animation: forecast-sweep 1.4s cubic-bezier(0.45, 0, 0.25, 1) 180ms both;
+}
+@keyframes forecast-sweep {
+  0% {
+    --forecast-angle: 0deg;
+    --forecast-light: var(--forecast-edge);
+  }
+  18%,
+  78% {
+    --forecast-light: var(--forecast-glint);
+  }
+  100% {
+    --forecast-angle: 360deg;
+    --forecast-light: var(--forecast-edge);
+  }
 }
 .summary-row {
   display: grid;
-  gap: 0.25rem;
+  gap: 0.2rem;
+}
+.summary-row + .summary-row {
+  border-top: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
+  padding-top: 0.7rem;
 }
 .summary-row h3 {
   margin: 0;
   color: var(--muted-foreground);
-  font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-size: 0.75rem;
+  font-weight: 400;
 }
 
 /* The details, closed until asked for. */
@@ -75,8 +129,8 @@
   justify-content: space-between;
   border-radius: 0.375rem;
   color: var(--foreground);
-  font-size: 0.8125rem;
-  font-weight: 600;
+  font-size: 0.875rem;
+  font-weight: 500;
   list-style: none;
   cursor: pointer;
 }
@@ -107,8 +161,9 @@
 
 .panel-call {
   margin: 0;
-  font-size: 1rem;
-  font-weight: 700;
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.3;
 }
 .panel-call.up {
   color: var(--color-gain);
@@ -136,8 +191,8 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 0.35rem 0.6rem;
-  font-size: 0.8125rem;
-  font-weight: 600;
+  font-size: 0.75rem;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 
@@ -200,6 +255,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .panel-summary {
+    animation: none;
+  }
   .panel-more summary::after {
     transition: none;
   }
