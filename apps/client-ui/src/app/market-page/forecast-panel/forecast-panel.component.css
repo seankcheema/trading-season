@@ -18,39 +18,39 @@
     0 0 24px -8px color-mix(in srgb, var(--primary) 50%, transparent);
   padding: 1rem;
   color: var(--card-foreground);
-  animation: forecast-drawer-in 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: forecast-panel-in 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-@keyframes forecast-drawer-in {
+@keyframes forecast-panel-in {
   from {
     opacity: 0;
     transform: translateX(1.5rem);
   }
 }
 
-.drawer-header {
+.panel-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 0.75rem;
 }
-.drawer-title {
+.panel-title {
   display: grid;
   gap: 0.35rem;
   min-width: 0;
 }
-.drawer-title h2 {
+.panel-title h2 {
   margin: 0;
   font-size: 1.125rem;
   font-weight: 700;
   line-height: 1.2;
 }
-.drawer-meta {
+.panel-meta {
   margin: 0;
   color: var(--muted-foreground);
   font-size: 0.75rem;
 }
-.drawer-close {
+.panel-close {
   flex-shrink: 0;
   width: 1.75rem;
   height: 1.75rem;
@@ -60,11 +60,11 @@
   line-height: 1;
   cursor: pointer;
 }
-.drawer-close:hover {
+.panel-close:hover {
   background: color-mix(in srgb, var(--foreground) 10%, transparent);
   color: var(--foreground);
 }
-.drawer-close:focus-visible {
+.panel-close:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
@@ -92,7 +92,7 @@
 }
 
 /* The summary: each call and its record, nothing else, before anything is opened. */
-.drawer-summary {
+.panel-summary {
   display: grid;
   gap: 0.75rem;
   border-top: 1px solid var(--border);
@@ -112,11 +112,11 @@
 }
 
 /* The details, closed until asked for. */
-.drawer-more {
+.panel-more {
   border-top: 1px solid var(--border);
   padding-top: 0.6rem;
 }
-.drawer-more summary {
+.panel-more summary {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -127,10 +127,10 @@
   list-style: none;
   cursor: pointer;
 }
-.drawer-more summary::-webkit-details-marker {
+.panel-more summary::-webkit-details-marker {
   display: none;
 }
-.drawer-more summary::after {
+.panel-more summary::after {
   content: '';
   width: 0.45rem;
   height: 0.45rem;
@@ -139,46 +139,46 @@
   transform: rotate(45deg) translate(-2px, -2px);
   transition: transform 160ms ease;
 }
-.drawer-more[open] summary::after {
+.panel-more[open] summary::after {
   transform: rotate(-135deg) translate(-2px, -2px);
 }
-.drawer-more summary:focus-visible {
+.panel-more summary:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
-.drawer-more-body {
+.panel-more-body {
   display: grid;
   gap: 0.5rem;
   padding-top: 0.6rem;
 }
 
-.drawer-call {
+.panel-call {
   margin: 0;
   font-size: 1rem;
   font-weight: 700;
 }
-.drawer-call.up {
+.panel-call.up {
   color: var(--color-gain);
 }
-.drawer-call.down {
+.panel-call.down {
   color: var(--color-loss);
 }
 /* Swings say nothing of direction, so they take amber (more) or teal (less), not red or green. */
-.drawer-call.swing-more {
+.panel-call.swing-more {
   color: var(--dua-swing-more);
 }
-.drawer-call.swing-less {
+.panel-call.swing-less {
   color: var(--dua-swing-less);
 }
-.drawer-why,
-.drawer-message {
+.panel-why,
+.panel-message {
   margin: 0;
   color: var(--muted-foreground);
   font-size: 0.8125rem;
   line-height: 1.45;
 }
 
-.drawer-record {
+.panel-record {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -188,17 +188,17 @@
   font-variant-numeric: tabular-nums;
 }
 
-.drawer-meter {
+.panel-meter {
   display: grid;
   gap: 0.25rem;
 }
-.drawer-meter-labels {
+.panel-meter-labels {
   display: flex;
   justify-content: space-between;
   color: var(--muted-foreground);
   font-size: 0.6875rem;
 }
-.drawer-meter-track {
+.panel-meter-track {
   position: relative;
   height: 0.5rem;
   border-radius: 999px;
@@ -208,7 +208,7 @@
     color-mix(in srgb, var(--primary) 70%, transparent)
   );
 }
-.drawer-meter-marker {
+.panel-meter-marker {
   position: absolute;
   top: 50%;
   width: 0.85rem;
@@ -219,7 +219,7 @@
   transform: translate(-50%, -50%);
 }
 
-.drawer-scores {
+.panel-scores {
   display: grid;
   gap: 0.3rem;
   margin: 0;
@@ -227,17 +227,17 @@
   list-style: none;
   font-size: 0.8125rem;
 }
-.drawer-scores li {
+.panel-scores li {
   display: flex;
   justify-content: space-between;
   gap: 0.75rem;
 }
-.drawer-scores strong {
+.panel-scores strong {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
-.drawer-notice {
+.panel-notice {
   margin: 0;
   border-top: 1px solid var(--border);
   padding-top: 0.8rem;
@@ -250,7 +250,7 @@
   :host {
     animation: none;
   }
-  .drawer-more summary::after {
+  .panel-more summary::after {
     transition: none;
   }
 }

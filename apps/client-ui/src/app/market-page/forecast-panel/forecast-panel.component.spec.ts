@@ -3,7 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { of } from 'rxjs';
 import { PlatformSignalsService } from '../risk-outlook/platform-signals.service';
 import { PlatformTrendService } from '../trend-read/platform-trend.service';
-import { ForecastDrawerComponent } from './forecast-drawer.component';
+import { ForecastPanelComponent } from './forecast-panel.component';
 
 // Thirty readings before the clock. Trend: the strong-trend read makes no call on every fourth
 // day and a wrong "down" call on days 0, 10 and 20; the momentum pattern is right on slots 0-11
@@ -38,8 +38,8 @@ const outlookDays = Array.from({ length: 30 }, (_, i) => ({
 }));
 
 @Component({
-  imports: [ForecastDrawerComponent],
-  template: `<app-forecast-drawer
+  imports: [ForecastPanelComponent],
+  template: `<app-forecast-panel
     [symbol]="symbol()"
     marketTimestamp="2026-01-05T15:05:00Z"
     (closed)="closes = closes + 1"
@@ -50,7 +50,7 @@ class HostComponent {
   closes = 0;
 }
 
-describe('ForecastDrawerComponent', () => {
+describe('ForecastPanelComponent', () => {
   function setup(status: 'ready' | 'loading' = 'ready') {
     const trend = {
       trend: signal({
@@ -99,21 +99,21 @@ describe('ForecastDrawerComponent', () => {
 
   it('shows both forecasts, their records and what each is scored against', () => {
     const { el, text } = setup();
-    const drawer = el.querySelector('app-forecast-drawer')!;
+    const drawer = el.querySelector('app-forecast-panel')!;
     expect(drawer.getAttribute('role')).toBe('complementary');
     expect(drawer.getAttribute('aria-label')).toBe('AAPL forecast');
-    expect(text('forecast-drawer')).toContain('Model forecast');
-    expect(text('forecast-drawer')).toContain('next 5 trading days');
+    expect(text('forecast-panel')).toContain('Model forecast');
+    expect(text('forecast-panel')).toContain('next 5 trading days');
 
     expect(text('forecast-direction')).toContain('Price likely higher');
     expect(text('forecast-direction')).toContain('84% confidence');
 
     expect(text('forecast-volatility')).toContain('Bigger price swings likely');
-    expect(el.querySelector('[data-testid=forecast-volatility] .drawer-call')!.classList).toContain(
+    expect(el.querySelector('[data-testid=forecast-volatility] .panel-call')!.classList).toContain(
       'swing-more',
     );
     expect(text('forecast-volatility')).toContain('75% confidence');
-    expect(el.querySelector('.drawer-meter-track')!.getAttribute('aria-label')).toBe(
+    expect(el.querySelector('.panel-meter-track')!.getAttribute('aria-label')).toBe(
       'Model estimate: 62% chance of bigger swings',
     );
 
@@ -127,19 +127,19 @@ describe('ForecastDrawerComponent', () => {
       'Swings model: 15 of last 20 weeks (75%)',
       '"Like last week": 12 of last 20 weeks (60%)',
     ]);
-    expect(text('forecast-drawer')).toMatch(/not investment advice/i);
+    expect(text('forecast-panel')).toMatch(/not investment advice/i);
   });
 
   it('leads with each call and its record, and keeps the reasons and scoring closed until asked', () => {
     const { fixture, el, text } = setup();
-    const summary = el.querySelector('.drawer-summary')!.textContent!.replace(/\s+/g, ' ');
+    const summary = el.querySelector('.panel-summary')!.textContent!.replace(/\s+/g, ' ');
     expect(summary).toContain('Price likely higher');
     expect(summary).toContain('84% confidence');
     expect(summary).toContain('Bigger price swings likely');
     expect(summary).toContain('75% confidence');
     expect(summary).not.toContain('Keeps going the same way');
     expect(summary).not.toContain('moved up');
-    expect(el.querySelectorAll('.drawer-summary app-forecast-confidence')).toHaveLength(2);
+    expect(el.querySelectorAll('.panel-summary app-forecast-confidence')).toHaveLength(2);
     expect(text('forecast-why')).toContain('Confidence is how often');
 
     const why = el.querySelector('[data-testid=forecast-why]') as HTMLDetailsElement;
@@ -163,7 +163,7 @@ describe('ForecastDrawerComponent', () => {
     });
     const { el } = setup();
     expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
-    expect(scrollIntoView.mock.contexts[0]).toBe(el.querySelector('app-forecast-drawer'));
+    expect(scrollIntoView.mock.contexts[0]).toBe(el.querySelector('app-forecast-panel'));
     expect(document.activeElement?.getAttribute('aria-label')).toBe('Close forecast');
   });
 
@@ -171,7 +171,7 @@ describe('ForecastDrawerComponent', () => {
     const { fixture, el } = setup();
     (el.querySelector('[aria-label="Close forecast"]') as HTMLButtonElement).click();
     expect(fixture.componentInstance.closes).toBe(1);
-    el.querySelector('app-forecast-drawer')!.dispatchEvent(
+    el.querySelector('app-forecast-panel')!.dispatchEvent(
       new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
     );
     expect(fixture.componentInstance.closes).toBe(2);
@@ -179,7 +179,7 @@ describe('ForecastDrawerComponent', () => {
 
   it('says so while loading and for a stock no forecast covers', () => {
     const loading = setup('loading');
-    expect(loading.text('forecast-drawer')).toContain('Loading the forecast');
+    expect(loading.text('forecast-panel')).toContain('Loading the forecast');
     TestBed.resetTestingModule();
 
     const { fixture, text } = setup();

@@ -21,7 +21,7 @@ import { MarketClockControlComponent } from '../dashboard/shared/market-clock-co
 import { MarketClockService } from '../dashboard/shared/market-clock.service';
 
 import { DuaComponent } from '../dua/dua.component';
-import { ForecastDrawerComponent } from './forecast-drawer/forecast-drawer.component';
+import { ForecastPanelComponent } from './forecast-panel/forecast-panel.component';
 import {
   ActivityItem,
   ActivityRowComponent,
@@ -132,7 +132,7 @@ interface MarketStats {
     DuaEmptyComponent,
     ThemeToggleComponent,
     DuaComponent,
-    ForecastDrawerComponent,
+    ForecastPanelComponent,
     TitleCasePipe,
     NgTemplateOutlet,
     OrderEditorComponent,

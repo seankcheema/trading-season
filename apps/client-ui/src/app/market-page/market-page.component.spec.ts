@@ -628,12 +628,12 @@ describe('MarketPageComponent', () => {
       const el = fixture.nativeElement as HTMLElement;
       const button = el.querySelector('.forecast-toggle') as HTMLButtonElement;
       expect(button.getAttribute('aria-pressed')).toBe('false');
-      expect(el.querySelector('app-forecast-drawer')).toBeNull();
+      expect(el.querySelector('app-forecast-panel')).toBeNull();
 
       button.click();
       fixture.detectChanges();
       expect(button.getAttribute('aria-pressed')).toBe('true');
-      const drawer = el.querySelector('app-forecast-drawer')!;
+      const drawer = el.querySelector('app-forecast-panel')!;
       expect(drawer.closest('.tools-column')).not.toBeNull();
       expect(drawer.closest('.chart-stage')).toBeNull();
       // The tools it covers are out of reach until it closes.
@@ -642,7 +642,7 @@ describe('MarketPageComponent', () => {
       (el.querySelector('[aria-label="Close forecast"]') as HTMLButtonElement).click();
       fixture.detectChanges();
       vi.runAllTimers();
-      expect(el.querySelector('app-forecast-drawer')).toBeNull();
+      expect(el.querySelector('app-forecast-panel')).toBeNull();
       expect(el.querySelector('.insight-panel')!.hasAttribute('inert')).toBe(false);
       expect(document.activeElement).toBe(button);
       expect(navigate).not.toHaveBeenCalledWith(
@@ -664,7 +664,7 @@ describe('MarketPageComponent', () => {
     (el.querySelector('.forecast-toggle') as HTMLButtonElement).click();
     fixture.detectChanges();
     expect(el.querySelector('.market-grid')!.classList).not.toContain('tools-collapsed');
-    expect(el.querySelector('.tools-column app-forecast-drawer')).not.toBeNull();
+    expect(el.querySelector('.tools-column app-forecast-panel')).not.toBeNull();
 
     (el.querySelector('[aria-label="Close forecast"]') as HTMLButtonElement).click();
     fixture.detectChanges();
@@ -683,10 +683,10 @@ describe('MarketPageComponent', () => {
   it('opens the forecast drawer from a ?forecast=open link and drops the parameter on close', async () => {
     const fixture = await setup('aapl', '', '', [], {}, '', { forecast: 'open' });
     const el = fixture.nativeElement as HTMLElement;
-    expect(el.querySelector('app-forecast-drawer')).not.toBeNull();
+    expect(el.querySelector('app-forecast-panel')).not.toBeNull();
     (el.querySelector('[aria-label="Close forecast"]') as HTMLButtonElement).click();
     fixture.detectChanges();
-    expect(el.querySelector('app-forecast-drawer')).toBeNull();
+    expect(el.querySelector('app-forecast-panel')).toBeNull();
     expect(navigate).toHaveBeenCalledWith(
       [],
       expect.objectContaining({ queryParams: { forecast: null }, replaceUrl: true }),

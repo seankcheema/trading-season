@@ -26,24 +26,24 @@ import { trendReadingFor } from '../trend-read/platform-trend';
  * its button or Escape.
  */
 @Component({
-  selector: 'app-forecast-drawer',
+  selector: 'app-forecast-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [DatePipe, ForecastConfidenceComponent, NgTemplateOutlet],
   host: {
     role: 'complementary',
     '[attr.aria-label]': "symbol() + ' forecast'",
-    'data-testid': 'forecast-drawer',
+    'data-testid': 'forecast-panel',
     '(keydown.escape)': 'closed.emit()',
   },
   template: `
-    <header class="drawer-header">
-      <div class="drawer-title">
+    <header class="panel-header">
+      <div class="panel-title">
         <span class="forecast-chip"
           ><span class="forecast-mark" aria-hidden="true"></span>Model forecast</span
         >
         <h2>{{ symbol() }} forecast</h2>
         @if (asOf(); as day) {
-          <p class="drawer-meta">
+          <p class="panel-meta">
             As of the {{ day | date: 'MMM d' }} close · next {{ horizon() }} trading days
           </p>
         }
@@ -51,7 +51,7 @@ import { trendReadingFor } from '../trend-read/platform-trend';
       <button
         #closeButton
         type="button"
-        class="drawer-close"
+        class="panel-close"
         aria-label="Close forecast"
         (click)="closed.emit()"
       >
@@ -60,17 +60,17 @@ import { trendReadingFor } from '../trend-read/platform-trend';
     </header>
 
     @if (failed()) {
-      <p class="drawer-message" role="alert">The forecast is unavailable right now.</p>
+      <p class="panel-message" role="alert">The forecast is unavailable right now.</p>
     } @else if (!ready()) {
-      <p class="drawer-message" role="status">Loading the forecast…</p>
+      <p class="panel-message" role="status">Loading the forecast…</p>
     } @else {
-      <div class="drawer-summary">
+      <div class="panel-summary">
         <section class="summary-row" data-testid="forecast-direction" aria-labelledby="fd-dir">
           <h3 id="fd-dir">Direction</h3>
           @switch (trend()?.kind) {
             @case ('ready') {
               <p
-                class="drawer-call"
+                class="panel-call"
                 [class.up]="direction() === 'up'"
                 [class.down]="direction() === 'down'"
               >
@@ -81,10 +81,10 @@ import { trendReadingFor } from '../trend-read/platform-trend';
               />
             }
             @case ('too-early') {
-              <p class="drawer-why">Direction reads start {{ trendFirstDay() }}.</p>
+              <p class="panel-why">Direction reads start {{ trendFirstDay() }}.</p>
             }
             @default {
-              <p class="drawer-why">No direction forecast covers {{ symbol() }}.</p>
+              <p class="panel-why">No direction forecast covers {{ symbol() }}.</p>
             }
           }
         </section>
@@ -94,7 +94,7 @@ import { trendReadingFor } from '../trend-read/platform-trend';
           @switch (risk()?.kind) {
             @case ('ready') {
               <p
-                class="drawer-call"
+                class="panel-call"
                 [class.swing-more]="risk()?.kind === 'ready' && swingCall().startsWith('Bigger')"
                 [class.swing-less]="risk()?.kind === 'ready' && swingCall().startsWith('Smaller')"
               >
@@ -103,48 +103,48 @@ import { trendReadingFor } from '../trend-read/platform-trend';
               <ng-container *ngTemplateOutlet="recordRow; context: { $implicit: swingRecord() }" />
             }
             @case ('too-early') {
-              <p class="drawer-why">Swing reads start {{ riskFirstDay() }}.</p>
+              <p class="panel-why">Swing reads start {{ riskFirstDay() }}.</p>
             }
             @default {
-              <p class="drawer-why">No volatility forecast covers {{ symbol() }}.</p>
+              <p class="panel-why">No volatility forecast covers {{ symbol() }}.</p>
             }
           }
         </section>
       </div>
 
-      <details class="drawer-more" data-testid="forecast-why">
+      <details class="panel-more" data-testid="forecast-why">
         <summary>Why these calls</summary>
-        <div class="drawer-more-body">
-          <p class="drawer-why">
+        <div class="panel-more-body">
+          <p class="panel-why">
             Confidence is how often each forecast's recent calls were right, over weeks that had
             already closed.
           </p>
           @if (trend()?.kind === 'ready') {
-            <p class="drawer-why">{{ directionWhy() }}</p>
+            <p class="panel-why">{{ directionWhy() }}</p>
             @if (directionRecord()?.coverage; as coverage) {
-              <p class="drawer-why">{{ coverage }}</p>
+              <p class="panel-why">{{ coverage }}</p>
             }
           }
           @if (risk()?.kind === 'ready') {
-            <div class="drawer-meter">
-              <div class="drawer-meter-labels" aria-hidden="true">
+            <div class="panel-meter">
+              <div class="panel-meter-labels" aria-hidden="true">
                 <span>Smaller swings</span><span>Bigger swings</span>
               </div>
-              <div class="drawer-meter-track" role="img" [attr.aria-label]="swingMeterLabel()">
-                <span class="drawer-meter-marker" [style.left.%]="swingProbability() * 100"></span>
+              <div class="panel-meter-track" role="img" [attr.aria-label]="swingMeterLabel()">
+                <span class="panel-meter-marker" [style.left.%]="swingProbability() * 100"></span>
               </div>
             </div>
-            <p class="drawer-why">
+            <p class="panel-why">
               The swings read says how much the price may move, up or down, not which way.
             </p>
           }
         </div>
       </details>
 
-      <details class="drawer-more" data-testid="forecast-scoring">
+      <details class="panel-more" data-testid="forecast-scoring">
         <summary>How it's scored</summary>
-        <div class="drawer-more-body">
-          <ul class="drawer-scores">
+        <div class="panel-more-body">
+          <ul class="panel-scores">
             @for (line of scoreLines(); track line.label) {
               <li>
                 <span>{{ line.label }}</span>
@@ -152,7 +152,7 @@ import { trendReadingFor } from '../trend-read/platform-trend';
               </li>
             }
           </ul>
-          <p class="drawer-why">
+          <p class="panel-why">
             Each forecast is judged against a simple pattern anyone could follow, over weeks that
             had already closed by this simulated date.
           </p>
@@ -160,23 +160,23 @@ import { trendReadingFor } from '../trend-read/platform-trend';
       </details>
     }
 
-    <p class="drawer-notice" role="note">
+    <p class="panel-notice" role="note">
       A model's read on a simulated market. Not investment advice; it can be wrong.
     </p>
 
     <ng-template #recordRow let-record>
       @if (record) {
-        <div class="drawer-record">
+        <div class="panel-record">
           <app-forecast-confidence [record]="record" />
         </div>
       } @else {
-        <p class="drawer-why">No closed weeks yet, so there is no record to show.</p>
+        <p class="panel-why">No closed weeks yet, so there is no record to show.</p>
       }
     </ng-template>
   `,
-  styleUrl: './forecast-drawer.component.css',
+  styleUrl: './forecast-panel.component.css',
 })
-export class ForecastDrawerComponent {
+export class ForecastPanelComponent {
   readonly symbol = input.required<string>();
   readonly marketTimestamp = input.required<string>();
   readonly closed = output<void>();

@@ -784,7 +784,7 @@
                 }
               </section>
               @if (forecastOpen()) {
-                <app-forecast-drawer
+                <app-forecast-panel
                   [symbol]="active.symbol"
                   [marketTimestamp]="marketTimestamp()"
                   (closed)="closeForecast()"
