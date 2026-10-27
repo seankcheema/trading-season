@@ -154,6 +154,19 @@ describe('ForecastDrawerComponent', () => {
     expect(scoring.open).toBe(true);
   });
 
+  it('comes into view and takes focus when it opens', () => {
+    const scrollIntoView = vi.fn();
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scrollIntoView;
+    onTestFinished(() => {
+      Element.prototype.scrollIntoView = original;
+    });
+    const { el } = setup();
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
+    expect(scrollIntoView.mock.contexts[0]).toBe(el.querySelector('app-forecast-drawer'));
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('Close forecast');
+  });
+
   it('closes on its button and on Escape', () => {
     const { fixture, el } = setup();
     (el.querySelector('[aria-label="Close forecast"]') as HTMLButtonElement).click();
