@@ -39,6 +39,7 @@ import {
   lucideChevronLeft,
   lucideChevronRight,
   lucideExternalLink,
+  lucideCircleHelp,
   lucideInfo,
   lucideNewspaper,
   lucideScanSearch,
@@ -93,9 +94,10 @@ const CHOICE_TITLES: Record<DuaChoice, string> = {
 
 // The smallest size the panel can be dragged to.
 const DUA_MIN_SIZE = { width: 320, height: 360 };
-// A resized panel's text scales with its width against the default width, within these bounds.
+// A resized panel's text scales with its width against the default width, within these bounds,
+// stepping down by `step` where it would not fit.
 const DUA_DEFAULT_WIDTH = 420;
-const DUA_TEXT_SCALE = { min: 0.9, max: 1.4 };
+const DUA_TEXT_SCALE = { min: 0.9, max: 1.4, step: 0.05 };
 
 @Component({
   selector: 'app-dua',
@@ -123,6 +125,7 @@ const DUA_TEXT_SCALE = { min: 0.9, max: 1.4 };
       lucideChevronLeft,
       lucideChevronRight,
       lucideExternalLink,
+      lucideCircleHelp,
       lucideInfo,
       lucideNewspaper,
       lucideScanSearch,
@@ -757,11 +760,22 @@ export class DuaComponent {
       if (!panel || typeof ResizeObserver === 'undefined') {
         return;
       }
-      const observer = new ResizeObserver((entries) =>
-        this.panelWidth.set(entries[0]?.contentRect.width ?? 0),
-      );
+      const observer = new ResizeObserver((entries) => {
+        this.panelWidth.set(entries[0]?.contentRect.width ?? 0);
+        this.fitText();
+      });
       observer.observe(panel);
       destroyRef.onDestroy(() => observer.disconnect());
+    });
+    // What the panel shows changes how much room its text needs, so the text is fitted again.
+    afterRenderEffect(() => {
+      this.session.size();
+      this.choice();
+      this.cards();
+      this.loading();
+      this.message();
+      this.recordOpen();
+      untracked(() => this.fitText());
     });
     afterRenderEffect(() => {
       // Measure after Angular renders the destination view, then animate from the prior size.
@@ -906,17 +920,35 @@ export class DuaComponent {
   // The panel's rendered width, watched so a resized panel's text follows it, including when the
   // browser window caps the panel.
   private readonly panelWidth = signal(0);
-  protected readonly textScale = computed(() => {
-    const width = this.panelWidth();
-    if (!this.session.size() || !width) {
-      return 1;
+
+  /**
+   * Sizes a resized panel's text (--dua-text-scale): as large as its width allows against the
+   * default width, then a step smaller at a time until the menu and every card fit without
+   * scrolling, but never below the minimum. At the default size the text keeps its own size.
+   * Every card is measured, not only the one showing, so paging keeps one size.
+   */
+  private fitText(): void {
+    const panel = this.panel()?.nativeElement;
+    if (!panel) {
+      return;
     }
-    const scale = Math.min(
-      Math.max(width / DUA_DEFAULT_WIDTH, DUA_TEXT_SCALE.min),
-      DUA_TEXT_SCALE.max,
-    );
-    return Math.round(scale * 100) / 100;
-  });
+    const width = this.panelWidth();
+    const resized = !!this.session.size() && width > 0;
+    const round = (value: number) => Math.round(value * 100) / 100;
+    let scale = resized
+      ? round(Math.min(Math.max(width / DUA_DEFAULT_WIDTH, DUA_TEXT_SCALE.min), DUA_TEXT_SCALE.max))
+      : 1;
+    const apply = () => panel.style.setProperty('--dua-text-scale', String(scale));
+    const overflows = () =>
+      [...panel.querySelectorAll<HTMLElement>('.dua-body, .insight-card .card-content')].some(
+        (el) => el.scrollHeight > el.clientHeight + 1,
+      );
+    apply();
+    while (resized && scale > DUA_TEXT_SCALE.min && overflows()) {
+      scale = Math.max(DUA_TEXT_SCALE.min, round(scale - DUA_TEXT_SCALE.step));
+      apply();
+    }
+  }
 
   // Free resize from the panel's top-left corner. The panel is anchored bottom-right, so dragging
   // up and to the left makes it larger.
@@ -1010,12 +1042,22 @@ export class DuaComponent {
     if (open === null) {
       return;
     }
-    // A card with less room than it needs scrolls, and the popover may open below what shows.
+    // The popup floats on the card, not in the card's scrolling content, so nothing clips it; it
+    // is placed under its button, in the card's own (possibly zoomed) pixels.
     afterNextRender(
-      () =>
-        this.panel()
-          ?.nativeElement.querySelector(`#forecast-pop-${open}`)
-          ?.scrollIntoView?.({ block: 'nearest' }),
+      () => {
+        const pop = this.panel()?.nativeElement.querySelector<HTMLElement>(`#forecast-pop-${open}`);
+        const button = pop?.parentElement?.querySelector('.forecast-record');
+        const card = pop?.closest<HTMLElement>('.insight-card');
+        if (!pop || !button || !card || !card.offsetWidth) {
+          return;
+        }
+        const zoom = card.getBoundingClientRect().width / card.offsetWidth;
+        const at = button.getBoundingClientRect();
+        const from = card.getBoundingClientRect();
+        pop.style.top = `${(at.bottom - from.top) / zoom + 8}px`;
+        pop.style.left = `${(at.left - from.left) / zoom}px`;
+      },
       { injector: this.injector },
     );
   }
@@ -1047,25 +1089,39 @@ export class DuaComponent {
     }
     const panel = this.panel()?.nativeElement;
     const launcher = this.launcher()?.nativeElement;
-    if (
-      (panel && path.includes(panel)) ||
-      (launcher && path.includes(launcher)) ||
-      inside('forecast-toast')
-    ) {
+    // Controls elsewhere that open Dua, such as the forecast toast and the chart's Forecast
+    // button, carry data-dua-trigger: their clicks are not outside clicks.
+    const trigger = path.some((el) => el instanceof Element && el.hasAttribute('data-dua-trigger'));
+    if ((panel && path.includes(panel)) || (launcher && path.includes(launcher)) || trigger) {
       return;
     }
     // Leave focus on the control the user clicked, rather than returning to the launcher.
     this.minimize(false);
   }
 
-  /** The forecast toast opens Dua on This Stock, whose first card is the forecast. */
-  protected openForecastToast(): void {
+  /** Whether Dua is open on This Stock, whose cards carry the stock's model forecasts. */
+  readonly showingForecast = computed(() => !this.session.minimized() && this.choice() === 'stock');
+
+  /**
+   * Opens Dua on This Stock, whose first card is the forecast, as the forecast toast and the
+   * market page's Forecast button do.
+   */
+  openForecast(): void {
     this.forecastToast.set('');
     this.session.minimized.set(false);
     if (!this.historyLoading()) {
       this.select('stock');
     }
     this.timers.push(setTimeout(() => this.panel()?.nativeElement.focus()));
+  }
+
+  /** The Forecast button's toggle: opens Dua on the forecast, or closes Dua if it shows it. */
+  toggleForecast(): void {
+    if (this.showingForecast()) {
+      this.minimize(false);
+    } else {
+      this.openForecast();
+    }
   }
 
   protected minimize(restoreFocus = true): void {

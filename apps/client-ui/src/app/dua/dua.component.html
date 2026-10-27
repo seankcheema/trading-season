@@ -5,7 +5,6 @@
   [class.resized]="!!session.size() && !raised()"
   [style.width.px]="raised() ? null : session.size()?.width"
   [style.height.px]="raised() ? null : session.size()?.height"
-  [style.--dua-text-scale]="textScale()"
   [attr.inert]="session.minimized() ? '' : null"
   [attr.aria-hidden]="session.minimized()"
   role="region"
@@ -173,7 +172,7 @@
                 [attr.aria-controls]="'card-details-' + cardIndex"
                 (click)="toggleDetails(cardIndex)"
               >
-                <ng-icon name="lucideInfo" aria-hidden="true" />
+                <ng-icon name="lucideCircleHelp" aria-hidden="true" />
               </button>
             </div>
             @if (detailsOpen() === cardIndex) {
@@ -235,7 +234,7 @@
                       (click)="toggleRecord(cardIndex)"
                     >
                       <app-forecast-confidence [record]="record" />
-                      <span class="forecast-record-more" aria-hidden="true"></span>
+                      <ng-icon class="forecast-record-info" name="lucideInfo" aria-hidden="true" />
                     </button>
                     @if (recordOpen() === cardIndex) {
                       <div
@@ -487,9 +486,10 @@
   @if (forecastToast(); as forecastSymbol) {
     <div
       class="forecast-toast"
+      data-dua-trigger
       (animationend)="$event.target === $event.currentTarget && forecastToast.set('')"
     >
-      <button type="button" class="forecast-toast-button" (click)="openForecastToast()">
+      <button type="button" class="forecast-toast-button" (click)="openForecast()">
         <span class="forecast-toast-label"
           ><span class="forecast-mark" aria-hidden="true"></span>Forecast ready</span
         >&ngsp;

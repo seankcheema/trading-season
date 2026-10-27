@@ -577,15 +577,10 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   protected readonly duaOutlook = signal(false);
   protected readonly insightTab = signal<InsightTab>('trading');
   protected readonly toolsCollapsed = signal(false);
-  // The market tools' Forecast tab, chosen there, by the chart's Forecast button or by
-  // ?forecast=open. The button reads as pressed while the tab shows; pressed again, it returns to
-  // the tab before, and hides the tools again if opening the forecast had to show them.
-  protected readonly forecastOpen = computed(
-    () => this.insightTab() === 'forecast' && !this.toolsCollapsed(),
-  );
+  // The market tools' Forecast tab, chosen there or by ?forecast=open. The chart's Forecast
+  // button opens Dua on the forecast instead (see DuaComponent.toggleForecast).
   private forecastFromLink = false;
-  private tabBeforeForecast: InsightTab = 'trading';
-  private forecastShowedTools = false;
+  protected readonly dua = viewChild(DuaComponent);
   protected readonly openToolbarMenu = signal<ToolbarMenu | null>(null);
   protected readonly enabledIndicators = signal<readonly TechnicalIndicator[]>([]);
   protected readonly indicatorOptions = [
@@ -778,7 +773,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
         }
         if (params.get('forecast') === 'open') {
           this.forecastFromLink = true;
-          this.openForecast();
+          this.openForecastTab();
         }
         const rawSymbol = params.get('compare') ?? '';
         const symbol = normalizeMarketSymbol(rawSymbol);
@@ -848,28 +843,13 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     if (tab === current) {
       return;
     }
-    if (tab === 'forecast') {
-      this.tabBeforeForecast = current;
-    } else if (current === 'forecast') {
+    if (current === 'forecast') {
       this.leaveForecast();
     }
     this.insightTab.set(tab);
   }
 
-  protected toggleForecast(): void {
-    if (!this.forecastOpen()) {
-      this.openForecast();
-      return;
-    }
-    const hideTools = this.forecastShowedTools;
-    this.selectTab(this.tabBeforeForecast);
-    if (hideTools) {
-      this.toolsCollapsed.set(true);
-    }
-  }
-
-  private openForecast(): void {
-    this.forecastShowedTools = this.toolsCollapsed();
+  private openForecastTab(): void {
     this.toolsCollapsed.set(false);
     this.selectTab('forecast');
     // Where the tools stack under the chart on smaller screens, the tab is brought into view.
@@ -884,7 +864,6 @@ export class MarketPageComponent implements OnInit, OnDestroy {
 
   // Leaving the Forecast tab drops ?forecast=open, so the same link can open it again later.
   private leaveForecast(): void {
-    this.forecastShowedTools = false;
     if (!this.forecastFromLink) {
       return;
     }

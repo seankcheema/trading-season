@@ -248,6 +248,7 @@ const TOOLTIP_GAP_PX = 10;
           <button
             type="button"
             class="forecast-toggle"
+            data-dua-trigger
             [attr.aria-pressed]="forecastOpen()"
             [title]="forecastOpen() ? 'Hide the model forecast' : 'Show the model forecast'"
             (click)="forecastToggle.emit()"
@@ -881,7 +882,8 @@ export class PriceChartComponent {
   readonly tooltipPlacement = input<TooltipPlacement>('point');
   readonly liveTailing = model(false);
   readonly showLiveTailing = input(false);
-  // A Forecast button beside the navigation bar; the page owns the Forecast tab it opens.
+  // A Forecast button beside the navigation bar. The page decides what it opens (on the market
+  // page, Dua on the forecast), so it is marked as a Dua trigger, not an outside click.
   readonly showForecast = input(false);
   readonly forecastOpen = input(false);
   readonly forecastToggle = output<void>();

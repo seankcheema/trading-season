@@ -1248,7 +1248,8 @@ article h3 {
 }
 /*
  * A resized panel's content scales with its width (--dua-text-scale, set from the panel's
- * width), so text and spacing grow and shrink together. The body's children are zoomed, not the
+ * width and stepped down until the content fits its height), so text and spacing grow and shrink
+ * together. The body's children are zoomed, not the
  * body, so the scrolling body keeps the panel's real height; the header, the page controls and
  * the footnotes keep their size, which also keeps their margins out of the card's share of room.
  */
@@ -1260,7 +1261,8 @@ article h3 {
 }
 /*
  * A resized panel gives the card whatever room the page controls and notes leave, so those stay
- * in view at the bottom; a card taller than its room, as scaled-up text can make it, scrolls.
+ * in view at the bottom. The text is fitted to that room, so the card does not scroll; only a
+ * panel too small even for the smallest text does.
  */
 .dua-panel.resized .dua-body {
   display: flex;

@@ -36,8 +36,12 @@
 }
 
 /* The forecast's record: its track strip and the frequency, a button that opens the details. */
+/*
+ * Left out of the card's entrance animation, whose transform and blur would make this row the
+ * popup's containing block: the card stays it, so the card's scrolling content does not clip it.
+ */
 .forecast-record-wrap {
-  position: relative;
+  animation: none !important;
   margin-top: 14px;
 }
 .forecast-record {
@@ -125,29 +129,26 @@
   outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
-.forecast-record-more {
-  width: 6px;
-  height: 6px;
-  border-right: 2px solid currentColor;
-  border-bottom: 2px solid currentColor;
-  transform: rotate(45deg) translateY(-2px);
+.forecast-record-info {
+  font-size: 14px;
+  color: var(--muted-foreground);
 }
-.forecast-record[aria-expanded='true'] .forecast-record-more {
-  transform: rotate(-135deg) translateY(-2px);
+.forecast-record:hover .forecast-record-info,
+.forecast-record[aria-expanded='true'] .forecast-record-info {
+  color: var(--primary);
 }
 
 /*
- * The record's details, in a small popover under the button rather than another window. It opens
- * in the flow, pointing up at the button: the card's content scrolls and clips anything floated
- * past its edge. Its type matches the View Details popover's.
+ * The record's details, in a small popup floating under the button, pointing up at it, rather
+ * than another window. The card positions it (the component sets top and left), so the card's
+ * scrolling content does not clip it. Its type matches the View Details popover's.
  */
 .forecast-pop {
-  position: relative;
-  margin-top: 8px;
-  margin-left: -6px;
+  position: absolute;
+  z-index: 3;
   display: grid;
   gap: 6px;
-  width: min(300px, calc(100% + 6px));
+  width: min(300px, calc(100% - 36px));
   box-sizing: border-box;
   border: 1px solid color-mix(in srgb, var(--primary) 40%, var(--border));
   border-radius: 10px;
@@ -180,4 +181,9 @@
 .forecast-pop-note {
   color: var(--muted-foreground);
   font-size: 11px;
+}
+
+/* While the record popup is open it may float past the card area, over the page controls. */
+.dua-panel .insights:has(.forecast-pop) {
+  overflow: visible;
 }
