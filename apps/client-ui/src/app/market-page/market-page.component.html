@@ -596,19 +596,15 @@
                       }
                     }
                   }
-                  @if (forecastOpen()) {
-                    <app-forecast-drawer
-                      [symbol]="active.symbol"
-                      [marketTimestamp]="marketTimestamp()"
-                      (closed)="closeForecast()"
-                    />
-                  }
                 </div>
               </section>
             </div>
 
             <aside class="tools-column" [attr.aria-hidden]="toolsCollapsed()">
-              <section class="insight-panel border-border bg-card rounded-xl border p-3">
+              <section
+                class="insight-panel border-border bg-card rounded-xl border p-3"
+                [attr.inert]="forecastOpen() ? '' : null"
+              >
                 <div
                   class="border-border bg-card sticky top-0 z-10 flex items-center border-b pb-2"
                 >
@@ -787,6 +783,13 @@
                   }
                 }
               </section>
+              @if (forecastOpen()) {
+                <app-forecast-drawer
+                  [symbol]="active.symbol"
+                  [marketTimestamp]="marketTimestamp()"
+                  (closed)="closeForecast()"
+                />
+              }
             </aside>
           </div>
         }

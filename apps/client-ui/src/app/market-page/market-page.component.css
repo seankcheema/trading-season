@@ -414,6 +414,7 @@
 }
 
 .tools-column {
+  position: relative;
   display: flex;
   min-width: 0;
   flex-direction: column;

@@ -573,9 +573,11 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   );
   protected readonly liveTailing = signal(true);
   protected readonly duaOutlook = signal(false);
-  // The forecast drawer over the chart, opened by the chart's Forecast button or ?forecast=open.
+  // The forecast drawer over the market tools beside the chart, opened by the chart's Forecast
+  // button or ?forecast=open. Opening it shows hidden tools, and closing it hides them again.
   protected readonly forecastOpen = signal(false);
   private forecastFromLink = false;
+  private forecastShowedTools = false;
   protected readonly insightTab = signal<InsightTab>('trading');
   protected readonly toolsCollapsed = signal(false);
   protected readonly openToolbarMenu = signal<ToolbarMenu | null>(null);
@@ -770,7 +772,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
         }
         if (params.get('forecast') === 'open') {
           this.forecastFromLink = true;
-          this.forecastOpen.set(true);
+          this.openForecast();
         }
         const rawSymbol = params.get('compare') ?? '';
         const symbol = normalizeMarketSymbol(rawSymbol);
@@ -837,12 +839,25 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     if (this.forecastOpen()) {
       this.closeForecast();
     } else {
-      this.forecastOpen.set(true);
+      this.openForecast();
     }
+  }
+
+  private openForecast(): void {
+    if (this.forecastOpen()) {
+      return;
+    }
+    this.forecastShowedTools = this.toolsCollapsed();
+    this.toolsCollapsed.set(false);
+    this.forecastOpen.set(true);
   }
 
   protected closeForecast(): void {
     this.forecastOpen.set(false);
+    if (this.forecastShowedTools) {
+      this.forecastShowedTools = false;
+      this.toolsCollapsed.set(true);
+    }
     // Drop ?forecast=open, so the same link can open the drawer again later.
     if (this.forecastFromLink) {
       this.forecastFromLink = false;

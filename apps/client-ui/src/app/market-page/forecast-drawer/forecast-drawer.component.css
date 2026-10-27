@@ -1,10 +1,12 @@
-/* The forecast drawer slides in over the right of the chart stage, which positions it. */
+/*
+ * The forecast drawer slides in over the market tools column beside the chart, which positions
+ * it, so the chart stays in full view.
+ */
 :host {
   position: absolute;
-  inset: 0.5rem 0.5rem 0.5rem auto;
+  inset: 0;
   z-index: 20;
   display: flex;
-  width: min(22rem, calc(100% - 1rem));
   flex-direction: column;
   gap: 0.9rem;
   overflow-y: auto;
