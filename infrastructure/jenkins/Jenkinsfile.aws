@@ -265,15 +265,17 @@ PY
           }
           CLIENT="${CLIENT_UI_URL%/}"
           REPORTING="${REPORTING_UI_URL%/}"
+          # POST /auth/login with an empty body answers 401, not 400: LocalAuthGuard rejects missing
+          # credentials before body validation runs. 401 still proves the route reached the auth service.
           # Redirect the group to a file instead of piping it, so FAILS is counted in this shell.
           {
             check "client home"        GET  "$CLIENT/"                      200
             check "client csr entry"   GET  "$CLIENT/index.csr.html"        200
             check "market snapshot"    GET  "$CLIENT/api/market/snapshot"   200
-            check "client auth route"  POST "$CLIENT/auth/login"            400 '{}'
+            check "client auth route"  POST "$CLIENT/auth/login"            401 '{}'
             check "reporting home"     GET  "$REPORTING/"                   200
             check "reporting runs"     GET  "$REPORTING/api/reporting/runs/latest" 401
-            check "reporting auth"     POST "$REPORTING/auth/login"         400 '{}'
+            check "reporting auth"     POST "$REPORTING/auth/login"         401 '{}'
           } > reports/deploy/smoke.txt
           cat reports/deploy/smoke.txt
           [ "$FAILS" -eq 0 ] || { echo "$FAILS route check(s) failed"; exit 1; }
