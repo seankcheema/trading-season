@@ -400,13 +400,15 @@
 .tool-button:hover,
 .tool-icon:hover {
   border-color: color-mix(in srgb, var(--primary) 55%, transparent);
-  background: #8ae5ff;
-  color: #08131a;
+  background: color-mix(in srgb, var(--primary) 16%, var(--raised));
+  color: var(--primary);
 }
-.tool-button-active {
-  border-color: color-mix(in srgb, var(--primary) 45%, transparent);
-  background: #57d7ff;
-  color: #08131a;
+/* Hovering an active button keeps its filled look; the hover ink would vanish on the fill. */
+.tool-button-active,
+.tool-button-active:hover {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--primary-foreground);
 }
 .tool-icon {
   width: 1.875rem;

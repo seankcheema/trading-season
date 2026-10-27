@@ -136,7 +136,7 @@ test.describe('Theme', () => {
     for (const choice of ['Daily Review', 'Portfolio Analysis']) {
       await panel.getByRole('button', { name: choice, exact: true }).click();
       const card = panel.locator('.insight-card:not(.inactive)');
-      await expect(card.locator('.primary-metric strong')).toHaveCSS('color', 'rgb(14, 14, 14)');
+      await expect(card.locator('h3')).toHaveCSS('color', 'rgb(14, 14, 14)');
       await expect(panel.locator('.dua-header')).toHaveCSS(
         'background-color',
         'rgb(255, 255, 255)',
@@ -157,7 +157,7 @@ test.describe('Theme', () => {
     await expect(panel).toBeHidden();
     await page.getByRole('button', { name: 'Dua insights', exact: true }).click();
     await expect(panel.locator('.dua-header')).toHaveCSS('background-color', 'rgb(12, 14, 16)');
-    await expect(panel.locator('.insight-card:not(.inactive) .primary-metric strong')).toHaveCSS(
+    await expect(panel.locator('.insight-card:not(.inactive) h3')).toHaveCSS(
       'color',
       'rgb(255, 255, 255)',
     );

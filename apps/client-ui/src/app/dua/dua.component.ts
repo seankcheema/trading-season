@@ -87,6 +87,9 @@ export const IDLE_WARNING_LINE =
 
 // An info popover's usual width, as a View Details popover's; beside its button it may be narrower.
 const INFO_POP_WIDTH = 300;
+// The narrowest window where the compact 360px panel, 16px from the edge, fits beside the centred
+// order dialog (at most 896px wide, max-w-4xl) with a small gap.
+const BESIDE_ORDER_DIALOG_MIN_WIDTH = 896 + 2 * (360 + 16 + 8);
 
 const CHOICE_TITLES: Record<DuaChoice, string> = {
   daily: 'Daily Review',
@@ -646,10 +649,13 @@ export class DuaComponent {
       if (symbol) {
         untracked(() => {
           this.legacyOpened = false;
-          // The dashboard's order dialog, which Dua accompanies, opens it every time. A stock
-          // page opens it only the first time in a visit, so it does not keep covering the
-          // order ticket; the launcher is always there to open it again.
-          if (raised || !this.session.marketOpened) {
+          // The dashboard's order dialog, which Dua accompanies, opens it every time there is
+          // room beside the dialog, so it never covers the dialog's controls. A stock page opens
+          // it only the first time in a visit, so it does not keep covering the order ticket;
+          // the launcher is always there to open it again.
+          const fits =
+            typeof window !== 'undefined' && window.innerWidth >= BESIDE_ORDER_DIALOG_MIN_WIDTH;
+          if (raised ? fits : !this.session.marketOpened) {
             this.session.marketOpened ||= !raised;
             this.session.minimized.set(false);
           }

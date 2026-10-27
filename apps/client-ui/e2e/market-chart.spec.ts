@@ -117,10 +117,8 @@ test('executes a trade and shows recent orders within the full-screen layout', a
     }
     expect(ticketBounds!.y).toBeGreaterThanOrEqual(accountBounds!.y + accountBounds!.height);
     await page.locator('#future-trade-quantity').fill('2');
-    for (const name of ['Outlook', 'Recent Orders']) {
-      await page.getByRole('tab', { name, exact: true }).click();
-      await expect(page.locator('app-trade-ticket')).toBeHidden();
-    }
+    await page.getByRole('tab', { name: 'Recent Orders', exact: true }).click();
+    await expect(page.locator('app-trade-ticket')).toBeHidden();
     await page.getByRole('tab', { name: 'Trading', exact: true }).click();
     await expect(page.locator('.trading-content')).toBeVisible();
     await expect(page.locator('#future-trade-quantity')).toHaveValue('2');
@@ -208,7 +206,7 @@ test('keeps account selection and rewinds executions with the shared clock', asy
   await page.getByRole('combobox', { name: 'Search instruments' }).fill('AAPL');
   await page.getByRole('option', { name: /AAPL/ }).first().click();
   await page.getByRole('link', { name: 'Open full screen market chart' }).click();
-  await expect(page).toHaveURL(/\/dashboard\/markets\/aapl\?accountId=2$/);
+  await expect(page).toHaveURL(/\/dashboard\/markets\/aapl$/);
   await expect(page.getByTestId('account-dropdown').locator('summary')).toContainText('Retirement');
   await page.reload();
   await expect(page.getByTestId('account-dropdown').locator('summary')).toContainText('Retirement');

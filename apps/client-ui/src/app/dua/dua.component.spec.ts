@@ -220,22 +220,36 @@ describe('Dua panel', () => {
     );
     expect(fixture.nativeElement.querySelectorAll('.choices button.unread')).toHaveLength(3);
   });
-  it('opens by itself on the first stock page of a visit only, but for the order dialog every time', () => {
-    const { fixture, click } = setup();
-    fixture.componentRef.setInput('symbol', 'AAPL');
-    fixture.detectChanges();
-    expect(session.minimized()).toBe(false);
-    click('Minimize Dua');
-    expect(session.minimized()).toBe(true);
+  it('opens by itself on the first stock page of a visit only, but for the order dialog every time it fits', () => {
+    const width = window.innerWidth;
+    const resize = (value: number) =>
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value });
+    try {
+      const { fixture, click } = setup();
+      fixture.componentRef.setInput('symbol', 'AAPL');
+      fixture.detectChanges();
+      expect(session.minimized()).toBe(false);
+      click('Minimize Dua');
+      expect(session.minimized()).toBe(true);
 
-    fixture.componentRef.setInput('symbol', 'MSFT');
-    fixture.detectChanges();
-    expect(session.minimized()).toBe(true);
+      fixture.componentRef.setInput('symbol', 'MSFT');
+      fixture.detectChanges();
+      expect(session.minimized()).toBe(true);
 
-    fixture.componentRef.setInput('raised', true);
-    fixture.componentRef.setInput('symbol', 'AAPL');
-    fixture.detectChanges();
-    expect(session.minimized()).toBe(false);
+      // Too narrow for the panel beside the order dialog: it would cover the dialog's controls.
+      resize(1280);
+      fixture.componentRef.setInput('raised', true);
+      fixture.componentRef.setInput('symbol', 'AAPL');
+      fixture.detectChanges();
+      expect(session.minimized()).toBe(true);
+
+      resize(1920);
+      fixture.componentRef.setInput('symbol', 'MSFT');
+      fixture.detectChanges();
+      expect(session.minimized()).toBe(false);
+    } finally {
+      resize(width);
+    }
   });
   it('labels the closed launcher Ask Dua on the dashboard, but not on a stock page or while open', () => {
     const { fixture, click } = setup();
@@ -299,6 +313,9 @@ describe('Dua panel', () => {
     fixture.componentRef.setInput('symbol', 'AAPL');
     fixture.componentRef.setInput('raised', true);
     fixture.detectChanges();
+    session.minimized.set(false);
+    fixture.detectChanges();
+    expect(session.minimized()).toBe(false);
     expect(fixture.nativeElement.style.zIndex).toBe('60');
     const documentEscape = vi.fn();
     document.addEventListener('keydown', documentEscape);

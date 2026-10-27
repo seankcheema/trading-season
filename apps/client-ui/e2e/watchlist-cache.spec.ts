@@ -39,9 +39,13 @@ test('saves stars across popup, fullscreen, navigation, and reload without dupli
     'true',
   );
   await expect(page.locator('app-price-chart svg').first()).toBeVisible();
+  // The chart's day of candles is fetched once; Dua's separate year of history (1Y) is not a repeat.
   expect(
     api.requests.filter(
-      (request) => request.url.includes('/market/candles') && request.url.includes('symbol=AAPL'),
+      (request) =>
+        request.url.includes('/market/candles') &&
+        request.url.includes('symbol=AAPL') &&
+        request.url.includes('timeframe=1D'),
     ),
   ).toHaveLength(1);
   await page.reload();
