@@ -633,6 +633,9 @@
                           [attr.aria-selected]="insightTab() === tab"
                           (click)="selectTab($any(tab))"
                         >
+                          @if (tab === 'forecast') {
+                            <span class="tab-forecast-mark" aria-hidden="true"></span>
+                          }
                           {{ tab === 'recent-orders' ? 'Recent Orders' : (tab | titlecase) }}
                         </button>
                       }
