@@ -442,6 +442,94 @@ describe('Dua panel', () => {
     expect(active().classList).toContain('forecast-card');
     expect(record()).toMatch(/^\d+% confidence$/);
   });
+  it('points out a stock forecast once a visit with a toast above the closed launcher', () => {
+    vi.useFakeTimers();
+    // A later stock page in the visit: Dua stays closed.
+    session.marketOpened = true;
+    const { fixture } = setup();
+    fixture.componentRef.setInput('symbol', 'AAPL');
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    const toast = () => el.querySelector('.forecast-toast');
+    expect(session.minimized()).toBe(true);
+    expect(toast()).toBeNull();
+
+    vi.advanceTimersByTime(1500);
+    fixture.detectChanges();
+    expect(toast()!.closest('[role=status]')).not.toBeNull();
+    expect(toast()!.textContent!.replace(/\s+/g, ' ').trim()).toBe(
+      "Forecast ready Ask Dua about AAPL's next 5 trading days",
+    );
+
+    // It fades out by itself and does not come back for the same stock this visit.
+    toast()!.dispatchEvent(new Event('animationend'));
+    fixture.detectChanges();
+    expect(toast()).toBeNull();
+    vi.advanceTimersByTime(5000);
+    fixture.detectChanges();
+    expect(toast()).toBeNull();
+  });
+  it('opens Dua on This Stock from the forecast toast', () => {
+    vi.useFakeTimers();
+    session.marketOpened = true;
+    const { fixture } = setup();
+    fixture.componentRef.setInput('symbol', 'AAPL');
+    fixture.detectChanges();
+    vi.advanceTimersByTime(1500);
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    (el.querySelector('.forecast-toast-button') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(session.minimized()).toBe(false);
+    expect(el.querySelector('.forecast-toast')).toBeNull();
+    expect(el.querySelector('.insight-card:not(.inactive)')!.classList).toContain('forecast-card');
+  });
+  it('leaves out the forecast toast for a stock Dua opened on, and waits while Dua speaks', () => {
+    vi.useFakeTimers();
+    const { fixture } = setup();
+    const el = fixture.nativeElement as HTMLElement;
+    // The visit's first stock page opens Dua, so closing it brings no toast.
+    fixture.componentRef.setInput('symbol', 'AAPL');
+    fixture.detectChanges();
+    expect(session.minimized()).toBe(false);
+    session.minimized.set(true);
+    fixture.detectChanges();
+    vi.advanceTimersByTime(3000);
+    fixture.detectChanges();
+    expect(el.querySelector('.forecast-toast')).toBeNull();
+
+    session.forecastSeen.clear();
+    const speech = TestBed.inject(DuaSpeech);
+    const line = speech.say('Order placed.', 'info', { duration: null });
+    fixture.detectChanges();
+    vi.advanceTimersByTime(3000);
+    fixture.detectChanges();
+    expect(el.querySelector('.forecast-toast')).toBeNull();
+    speech.dismiss(line);
+    fixture.detectChanges();
+    vi.advanceTimersByTime(1500);
+    fixture.detectChanges();
+    expect(el.querySelector('.forecast-toast')).not.toBeNull();
+  });
+  it('says in its menu when a model forecast covers the stock', () => {
+    const { fixture, click } = setup();
+    fixture.componentRef.setInput('symbol', 'AAPL');
+    fixture.detectChanges();
+    click('Dua insights');
+    const el = fixture.nativeElement as HTMLElement;
+    const stock = el.querySelector('.choices button') as HTMLButtonElement;
+    expect(stock.getAttribute('aria-label')).toBe('This Stock');
+    expect(stock.querySelector('small')!.textContent!.replace(/\s+/g, ' ').trim()).toBe(
+      'Forecast · What to consider next',
+    );
+    expect(stock.getAttribute('aria-description')).toBe('Includes a model forecast');
+
+    fixture.componentRef.setInput('symbol', 'ZZZZ');
+    fixture.detectChanges();
+    const other = el.querySelector('.choices button') as HTMLButtonElement;
+    expect(other.querySelector('.choice-forecast')).toBeNull();
+    expect(other.hasAttribute('aria-description')).toBe(false);
+  });
   it('opens the forecast details in a small popover by its record, not another window', () => {
     const { fixture, click } = setup();
     fixture.componentRef.setInput('symbol', 'AAPL');

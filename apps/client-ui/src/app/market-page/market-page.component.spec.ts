@@ -126,6 +126,7 @@ describe('MarketPageComponent', () => {
           useValue: {
             minimized: signal(true),
             size: signal(null),
+            forecastSeen: new Set<string>(),
             unread: () => false,
             query: () => {},
             viewedSummary: () => {},
