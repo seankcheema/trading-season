@@ -1,4 +1,5 @@
 import { signal } from '@angular/core';
+import { DuaComponent } from '../dua/dua.component';
 import { DuaSession } from '../dua/dua-session.service';
 import { PlatformSignalsService } from './risk-outlook/platform-signals.service';
 import { PlatformTrendService } from './trend-read/platform-trend.service';
@@ -622,7 +623,7 @@ describe('MarketPageComponent', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="market-outlook"]')).toBeNull();
   });
 
-  it('shows the forecast as a market tools tab, from the tab or the chart Forecast button', async () => {
+  it('shows the forecast as a market tools tab', async () => {
     const fixture = await setup('aapl');
     const el = fixture.nativeElement as HTMLElement;
     const tabs = () =>
@@ -630,66 +631,30 @@ describe('MarketPageComponent', () => {
         (tab) =>
           `${tab.textContent!.trim()}${tab.getAttribute('aria-selected') === 'true' ? '*' : ''}`,
       );
-    const tab = (name: string) =>
-      [...el.querySelectorAll('[role=tab]')].find(
-        (t) => t.textContent!.trim() === name,
-      ) as HTMLButtonElement;
-    const button = el.querySelector('.forecast-toggle') as HTMLButtonElement;
     expect(tabs()).toEqual(['Trading*', 'Recent Orders', 'Forecast']);
     expect(el.querySelector('app-forecast-panel')).toBeNull();
-    expect(button.getAttribute('aria-pressed')).toBe('false');
-
-    tab('Forecast').click();
+    (
+      [...el.querySelectorAll('[role=tab]')].find(
+        (t) => t.textContent!.trim() === 'Forecast',
+      ) as HTMLButtonElement
+    ).click();
     fixture.detectChanges();
     expect(tabs()).toEqual(['Trading', 'Recent Orders', 'Forecast*']);
     const panel = el.querySelector('[role=tabpanel][aria-label="Forecast"] app-forecast-panel');
-    expect(panel).not.toBeNull();
     expect(panel!.closest('.chart-stage')).toBeNull();
-    expect(button.getAttribute('aria-pressed')).toBe('true');
-
-    // The chart's button closes it back to the tab before, and opens it from any tab.
-    tab('Recent Orders').click();
-    fixture.detectChanges();
-    button.click();
-    fixture.detectChanges();
-    expect(tabs()).toEqual(['Trading', 'Recent Orders', 'Forecast*']);
-    button.click();
-    fixture.detectChanges();
-    expect(tabs()).toEqual(['Trading', 'Recent Orders*', 'Forecast']);
-    expect(el.querySelector('app-forecast-panel')).toBeNull();
-    expect(button.getAttribute('aria-pressed')).toBe('false');
-    expect(navigate).not.toHaveBeenCalledWith(
-      [],
-      expect.objectContaining({ queryParams: { forecast: null } }),
-    );
   });
 
-  it('shows hidden tools for the forecast, and hides them again when the button closes it', async () => {
+  it('asks Dua for the forecast from the chart Forecast button, leaving the tabs alone', async () => {
+    const toggle = vi.spyOn(DuaComponent.prototype, 'toggleForecast').mockImplementation(() => {});
     const fixture = await setup('aapl');
     const el = fixture.nativeElement as HTMLElement;
     const button = el.querySelector('.forecast-toggle') as HTMLButtonElement;
-    const collapsed = () => el.querySelector('.market-grid')!.classList.contains('tools-collapsed');
-    (el.querySelector('[aria-label="Hide market tools"]') as HTMLButtonElement).click();
-    fixture.detectChanges();
-    expect(collapsed()).toBe(true);
-
+    expect(button.hasAttribute('data-dua-trigger')).toBe(true);
     button.click();
     fixture.detectChanges();
-    expect(collapsed()).toBe(false);
-    expect(el.querySelector('.tools-column app-forecast-panel')).not.toBeNull();
-    button.click();
-    fixture.detectChanges();
-    expect(collapsed()).toBe(true);
-    expect(button.getAttribute('aria-pressed')).toBe('false');
-
-    // Tools that were showing stay showing.
-    (el.querySelector('[aria-label="Open market tools"]') as HTMLButtonElement).click();
-    fixture.detectChanges();
-    button.click();
-    fixture.detectChanges();
-    button.click();
-    fixture.detectChanges();
-    expect(collapsed()).toBe(false);
+    expect(toggle).toHaveBeenCalledTimes(1);
+    expect(el.querySelector('app-forecast-panel')).toBeNull();
+    toggle.mockRestore();
   });
 
   it('opens the Forecast tab from a ?forecast=open link and drops the parameter on leaving it', async () => {
