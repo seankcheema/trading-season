@@ -10,7 +10,7 @@
   bottom: 84px;
   z-index: 1;
   width: max-content;
-  max-width: min(17.5rem, calc(100vw - 32px));
+  max-width: min(21rem, calc(100vw - 32px));
   animation: dua-forecast-toast 7s ease both;
 }
 .forecast-toast:hover,
@@ -53,17 +53,18 @@
   outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
+/* Its label has the forecast badge's type, and its message the speech bubble's. */
 .forecast-toast-label {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   color: var(--primary);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.02em;
 }
 .forecast-toast-text {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
 }
 @keyframes dua-forecast-toast {
