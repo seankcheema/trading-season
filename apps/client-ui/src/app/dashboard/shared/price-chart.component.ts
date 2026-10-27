@@ -612,7 +612,7 @@ const TOOLTIP_GAP_PX = 10;
       background: #57d7ff;
       color: #08131a;
     }
-    /* The model forecast's door: the same cyan diamond its drawer and Dua's badge wear. */
+    /* The model forecast's door: the same cyan diamond its tab and Dua's badge wear. */
     .forecast-toggle {
       display: inline-flex;
       flex-shrink: 0;
@@ -881,7 +881,7 @@ export class PriceChartComponent {
   readonly tooltipPlacement = input<TooltipPlacement>('point');
   readonly liveTailing = model(false);
   readonly showLiveTailing = input(false);
-  // A Forecast button beside the navigation bar; the page owns the drawer it opens.
+  // A Forecast button beside the navigation bar; the page owns the Forecast tab it opens.
   readonly showForecast = input(false);
   readonly forecastOpen = input(false);
   readonly forecastToggle = output<void>();

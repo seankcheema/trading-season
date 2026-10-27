@@ -50,7 +50,7 @@ export interface DuaCard {
 }
 
 /**
- * A forecast's record over closed weeks, as forecast cards and the forecast drawer show it: a
+ * A forecast's record over closed weeks, as forecast cards and the Forecast tab show it: a
  * frequency with one denominator ("right 15 of last 20 calls"), how often it made a call when it
  * can decline to, and the simple pattern it is measured against over its own closed weeks.
  */
