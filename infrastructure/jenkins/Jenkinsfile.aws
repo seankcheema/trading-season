@@ -1,0 +1,299 @@
+// Team 2 AWS deployment pipeline: ECR, ECS service rollout, optional S3/CloudFront publish and route checks.
+// Deploy only. It runs no tests, no SonarQube, no Docker Compose stack and asks for no approval.
+// The long CI pipeline stays in infrastructure/jenkins/Jenkinsfile.
+//
+// Jenkins job: Pipeline script from SCM, repository https://github.com/seankcheema/dualeapa-sprint1-project.git,
+// Script Path infrastructure/jenkins/Jenkinsfile.aws. Needs only the Pipeline and Git plugins.
+// Give the job no SCM polling or webhook trigger: every run deploys, so it is started by hand after a green CI build.
+// AWS access comes from the team2-jenkins-deploy instance profile; there are no keys or AWS plugin steps.
+// Agent needs: docker (with BuildKit), aws CLI v2, git, python3, curl. The jenkins user must be in the docker group.
+//
+// First run after this file lands: Jenkins registers the parameters below and runs with their defaults.
+// The deploy copies each service's currently registered task definition and changes only the image, so
+// environment, secrets, CPU and memory come from the registered revision, not from this file. To change
+// them, render the matching template in infrastructure/aws/ecs/ (replace every {{NAME}} with the value from
+// the deployment, for example with sed) and register it once with aws ecs register-task-definition; the
+// next run picks the new revision up. Do that at least once before the first deploy so CORS_ORIGINS holds
+// the real CloudFront domains.
+// Rollback: aws ecs update-service --cluster team2-trading --service <name> --task-definition <family>:<previous revision>
+pipeline {
+  agent any
+  options {
+    disableConcurrentBuilds()
+    timeout(time: 60, unit: 'MINUTES')
+    buildDiscarder(logRotator(numToKeepStr: '20'))
+  }
+  parameters {
+    string(name: 'DESIRED_COUNT', defaultValue: '1', description: 'Tasks to run per service after the deploy. Use 1 to bring paused services back.')
+    booleanParam(name: 'RUN_MIGRATIONS', defaultValue: false, description: 'Apply db/migrations to the RDS database before deploying (init-db.sh records each file once).')
+    booleanParam(name: 'DEPLOY_UI', defaultValue: false, description: 'Build both UIs, upload them to S3, invalidate CloudFront and run route checks. Enable once the buckets and distributions exist.')
+  }
+  environment {
+    AWS_REGION = 'us-east-1'
+    AWS_DEFAULT_REGION = 'us-east-1'
+    CLUSTER = 'team2-trading'
+    // ECR repository team2/<name>, ECS service <name> and container <name> all share these names.
+    SERVICES = 'auth-service holdings-and-trade-service order-and-sell-service reporting-service'
+    RDS_ENDPOINT = 'team2-db.c8b00ys0ins8.us-east-1.rds.amazonaws.com'
+    // Used only when DEPLOY_UI is ticked. Fill the four blanks once the CloudFront distributions exist.
+    CLIENT_UI_BUCKET = 'team2-client-ui-760144414473'
+    REPORTING_UI_BUCKET = 'team2-reporting-ui-760144414473'
+    CLIENT_DISTRIBUTION_ID = 'E2V2MD57NAC093'
+    REPORTING_DISTRIBUTION_ID = 'ERCSMRRHUUB8C'
+    CLIENT_UI_URL = 'https://d378q9u5bg2d0o.cloudfront.net'
+    REPORTING_UI_URL = 'https://dgkg9h5p7e7bt.cloudfront.net'
+  }
+  stages {
+    stage('Checkout') {
+      steps { checkout scm }
+    }
+
+    stage('Preflight') {
+      steps {
+        sh '''#!/usr/bin/env bash
+          set -euo pipefail
+          aws --version; docker --version; git --version; python3 --version; curl --version | sed -n 1p
+          aws sts get-caller-identity
+          aws ecs describe-clusters --clusters "$CLUSTER" --query 'clusters[0].[clusterName,status]' --output text
+          for svc in $SERVICES; do
+            aws ecs describe-services --cluster "$CLUSTER" --services "$svc" \
+              --query 'services[0].[serviceName,status,desiredCount]' --output text
+          done
+          echo "Revision: $(git rev-parse --short HEAD)"
+        '''
+        script {
+          if (params.DEPLOY_UI && !(env.CLIENT_DISTRIBUTION_ID && env.REPORTING_DISTRIBUTION_ID && env.CLIENT_UI_URL && env.REPORTING_UI_URL)) {
+            error('DEPLOY_UI is ticked but a distribution ID or URL at the top of this Jenkinsfile is blank.')
+          }
+        }
+      }
+    }
+
+    stage('Build Docker images') {
+      steps {
+        sh '''#!/usr/bin/env bash
+          set -euo pipefail
+          export DOCKER_BUILDKIT=1
+          for svc in $SERVICES; do
+            case "$svc" in
+              # The Java services also compile packages/trading-java-common, so their context is the repository root.
+              holdings-and-trade-service|order-and-sell-service) context="." ;;
+              *) context="apps/$svc" ;;
+            esac
+            file="apps/$svc/Dockerfile"
+            test -f "$file" || { echo "Missing $file"; exit 1; }
+            docker build -t "team2-aws-$svc:$BUILD_NUMBER" -f "$file" "$context"
+          done
+        '''
+      }
+    }
+
+    stage('Migrate database') {
+      when { expression { params.RUN_MIGRATIONS } }
+      steps {
+        sh '''#!/usr/bin/env bash
+          set -euo pipefail
+          # The password stays in an environment variable; it is never printed or put on a command line.
+          PGPASSWORD="$(aws secretsmanager get-secret-value --secret-id team2/db-password --query SecretString --output text)"
+          export PGPASSWORD
+          docker run --rm --network host -e PGPASSWORD \
+            -v "$PWD/db/migrations:/workspace/db/migrations:ro" \
+            -v "$PWD/infrastructure/docker/init-db.sh:/init-db.sh:ro" \
+            postgres:16-alpine sh /init-db.sh \
+            "postgresql://trading_season@$RDS_ENDPOINT:5432/trading_season?sslmode=require" /workspace
+        '''
+      }
+    }
+
+    stage('Push images to ECR') {
+      steps {
+        sh '''#!/usr/bin/env bash
+          set -euo pipefail
+          ACCOUNT="$(aws sts get-caller-identity --query Account --output text)"
+          REGISTRY="$ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com"
+          TAG="$(git rev-parse --short HEAD)"
+          aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$REGISTRY"
+          for svc in $SERVICES; do
+            for t in "$TAG" "build-$BUILD_NUMBER"; do
+              docker tag "team2-aws-$svc:$BUILD_NUMBER" "$REGISTRY/team2/$svc:$t"
+              docker push "$REGISTRY/team2/$svc:$t"
+              docker rmi "$REGISTRY/team2/$svc:$t" >/dev/null
+            done
+            docker rmi "team2-aws-$svc:$BUILD_NUMBER" >/dev/null
+            echo "Published $svc: $REGISTRY/team2/$svc:$TAG"
+          done
+        '''
+      }
+    }
+
+    stage('Deploy images to ECS services') {
+      steps {
+        sh '''#!/usr/bin/env bash
+          set -euo pipefail
+          ACCOUNT="$(aws sts get-caller-identity --query Account --output text)"
+          REGISTRY="$ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com"
+          TAG="$(git rev-parse --short HEAD)"
+          DESIRED="${DESIRED_COUNT:-1}"
+          mkdir -p reports/deploy
+          for svc in $SERVICES; do
+            IMAGE="$REGISTRY/team2/$svc:$TAG"
+            # The task definition now registered for the service is the source of truth for
+            # environment, secrets, CPU, memory and logging. Only the image changes.
+            CURRENT="$(aws ecs describe-services --cluster "$CLUSTER" --services "$svc" \
+              --query 'services[0].taskDefinition' --output text)"
+            [ -n "$CURRENT" ] && [ "$CURRENT" != "None" ] || { echo "Missing ECS service $svc"; exit 1; }
+            aws ecs describe-task-definition --task-definition "$CURRENT" --include TAGS --output json > current-task.json
+            python3 - "$svc" "$IMAGE" <<'PY'
+import json, sys
+name, image = sys.argv[1], sys.argv[2]
+data = json.load(open('current-task.json'))
+td = data['taskDefinition']
+matches = [c for c in td['containerDefinitions'] if c['name'] == name]
+if len(matches) != 1:
+    sys.exit('Container %s not found in the current task definition' % name)
+matches[0]['image'] = image
+for key in ('taskDefinitionArn', 'revision', 'status', 'requiresAttributes', 'compatibilities',
+            'registeredAt', 'registeredBy', 'deregisteredAt'):
+    td.pop(key, None)
+td['tags'] = data.get('tags', [])
+json.dump(td, open('next-task.json', 'w'), indent=2)
+PY
+            NEXT="$(aws ecs register-task-definition --cli-input-json file://next-task.json \
+              --query 'taskDefinition.taskDefinitionArn' --output text)"
+            cp next-task.json "reports/deploy/$svc-taskdef.json"
+            aws ecs update-service --cluster "$CLUSTER" --service "$svc" \
+              --task-definition "$NEXT" --desired-count "$DESIRED" --force-new-deployment >/dev/null
+            echo "Deploying $svc: $IMAGE as $NEXT (desired $DESIRED)"
+          done
+          # Wait for all four. Java tasks start slowly, so retry the wait once before giving up.
+          wait_stable() { aws ecs wait services-stable --cluster "$CLUSTER" --services $SERVICES; }
+          if ! wait_stable && ! wait_stable; then
+            for svc in $SERVICES; do
+              echo "== recent events for $svc"
+              aws ecs describe-services --cluster "$CLUSTER" --services "$svc" \
+                --query 'services[0].events[:5].[createdAt,message]' --output text
+            done
+            exit 1
+          fi
+          echo 'All four ECS services reached a stable state.'
+        '''
+      }
+    }
+
+    stage('Verify ECS services') {
+      steps {
+        sh '''#!/usr/bin/env bash
+          set -euo pipefail
+          DESIRED="${DESIRED_COUNT:-1}"
+          FAILS=0
+          for svc in $SERVICES; do
+            read -r name desired running rollout <<<"$(aws ecs describe-services --cluster "$CLUSTER" --services "$svc" \
+              --query 'services[0].[serviceName,desiredCount,runningCount,deployments[0].rolloutState]' --output text)"
+            echo "$name desired=$desired running=$running rollout=$rollout"
+            if [ "$running" != "$desired" ] || [ "$desired" != "$DESIRED" ]; then FAILS=$((FAILS+1)); fi
+          done
+          [ "$FAILS" -eq 0 ] || { echo "$FAILS service(s) are not at the requested count"; exit 1; }
+        '''
+      }
+    }
+
+    stage('Build UI bundles') {
+      when { expression { params.DEPLOY_UI } }
+      steps {
+        sh '''#!/usr/bin/env bash
+          set -euo pipefail
+          # Built inside a Node container so the agent needs no Node install. The user mapping keeps the
+          # output owned by jenkins, so the workspace can be cleaned.
+          for app in client-ui reporting-ui; do
+            docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -e npm_config_cache=/tmp/.npm \
+              -v "$PWD:/repo" -w "/repo/apps/$app" node:24.8.0-alpine sh -c "npm ci && npm run build"
+            test -s "apps/$app/dist/$app/browser/index.html" || { echo "Missing $app bundle"; exit 1; }
+          done
+        '''
+      }
+    }
+
+    stage('Publish UIs to S3 and CloudFront') {
+      when { expression { params.DEPLOY_UI } }
+      steps {
+        sh '''#!/usr/bin/env bash
+          set -euo pipefail
+          publish() {  # app bucket distribution-id
+            local dir="apps/$1/dist/$1/browser"
+            # Pass 1: everything except HTML, cached for a year, removing files that no longer exist.
+            aws s3 sync "$dir/" "s3://$2/" --delete --exclude "*.html" \
+              --cache-control "public,max-age=31536000,immutable"
+            # Pass 2: the HTML entry points, never cached, so a new build is picked up straight away.
+            aws s3 sync "$dir/" "s3://$2/" --exclude "*" --include "*.html" --cache-control "no-cache"
+            INVALIDATION="$(aws cloudfront create-invalidation --distribution-id "$3" --paths '/*' \
+              --query 'Invalidation.Id' --output text)"
+            aws cloudfront wait invalidation-completed --distribution-id "$3" --id "$INVALIDATION"
+            echo "Published $1 to s3://$2 and invalidated $3"
+          }
+          publish client-ui "$CLIENT_UI_BUCKET" "$CLIENT_DISTRIBUTION_ID"
+          publish reporting-ui "$REPORTING_UI_BUCKET" "$REPORTING_DISTRIBUTION_ID"
+        '''
+      }
+    }
+
+    stage('Route checks (CloudFront to ALB to service)') {
+      when { expression { params.DEPLOY_UI } }
+      steps {
+        sh '''#!/usr/bin/env bash
+          set -uo pipefail
+          mkdir -p reports/deploy
+          FAILS=0
+          check() {  # label method url expected-status [json-body]
+            local label="$1" method="$2" url="$3" expected="$4" body="${5:-}" code=000
+            # Retry for about a minute: new tasks and CloudFront take a moment to settle.
+            for attempt in 1 2 3 4 5 6; do
+              if [ -n "$body" ]; then
+                code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 -X "$method" \
+                  -H 'Content-Type: application/json' -d "$body" "$url" || true)
+              else
+                code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 -X "$method" "$url" || true)
+              fi
+              [ "$code" = "$expected" ] && break
+              sleep 10
+            done
+            if [ "$code" = "$expected" ]; then
+              echo "PASS  $label  $method $url -> HTTP $code"
+            else
+              echo "FAIL  $label  $method $url -> HTTP $code (expected $expected)"
+              FAILS=$((FAILS+1))
+            fi
+          }
+          CLIENT="${CLIENT_UI_URL%/}"
+          REPORTING="${REPORTING_UI_URL%/}"
+          # POST /auth/login with an empty body answers 401, not 400: LocalAuthGuard rejects missing
+          # credentials before body validation runs. 401 still proves the route reached the auth service.
+          # Redirect the group to a file instead of piping it, so FAILS is counted in this shell.
+          {
+            check "client home"        GET  "$CLIENT/"                      200
+            check "client csr entry"   GET  "$CLIENT/index.csr.html"        200
+            check "market snapshot"    GET  "$CLIENT/api/market/snapshot"   200
+            check "client auth route"  POST "$CLIENT/auth/login"            401 '{}'
+            check "reporting home"     GET  "$REPORTING/"                   200
+            check "reporting runs"     GET  "$REPORTING/api/reporting/runs/latest" 401
+            check "reporting auth"     POST "$REPORTING/auth/login"         401 '{}'
+          } > reports/deploy/smoke.txt
+          cat reports/deploy/smoke.txt
+          [ "$FAILS" -eq 0 ] || { echo "$FAILS route check(s) failed"; exit 1; }
+        '''
+      }
+    }
+  }
+  post {
+    success { echo 'Images pushed and ECS services deployed. UIs were published and checked when DEPLOY_UI was ticked.' }
+    failure { echo 'AWS deployment failed. Read the stage output, then see the rollback note at the top of this file.' }
+    always {
+      archiveArtifacts artifacts: 'reports/deploy/**', allowEmptyArchive: true
+      sh '''#!/usr/bin/env bash
+        docker logout "$(aws sts get-caller-identity --query Account --output text 2>/dev/null).dkr.ecr.$AWS_REGION.amazonaws.com" >/dev/null 2>&1 || true
+        docker image prune -f >/dev/null 2>&1 || true
+        docker builder prune -f --keep-storage 4GB >/dev/null 2>&1 || true
+        rm -rf apps/client-ui/node_modules apps/reporting-ui/node_modules apps/client-ui/dist apps/reporting-ui/dist current-task.json next-task.json || true
+      '''
+    }
+  }
+}

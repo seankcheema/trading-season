@@ -9,6 +9,8 @@ Container and CI configuration. None of it is a production deployment.
 | [docker-compose.kafka-ec2.yml](docker-compose/docker-compose.kafka-ec2.yml) | Override for a host that runs only Kafka: publishes 9092 and advertises the host's private DNS name; see [Kafka on its own host](#kafka-on-its-own-host) |
 | [docker/kafka-start.sh](docker/kafka-start.sh) | Starts the broker, creates both topics, and forwards SIGTERM to the broker |
 | [Jenkinsfile](jenkins/Jenkinsfile) | CI pipeline |
+| [Jenkinsfile.aws](jenkins/Jenkinsfile.aws) | Deploy-only pipeline for the AWS account: builds and pushes the four service images to ECR, rolls the ECS services, and optionally publishes both UIs to S3 and CloudFront; see [AWS deployment job](#aws-deployment-job) |
+| [aws/ecs/](aws/ecs) | ECS Fargate task definition templates for the four services, one `{{NAME}}` placeholder per deployment value; registered by hand, then reused by the deploy job |
 | [sonar-project.properties](jenkins/sonar-project.properties), [jacoco-to-sonar-coverage.mjs](jenkins/jacoco-to-sonar-coverage.mjs) | SonarQube analysis settings and the Java coverage conversion it depends on |
 | [jenkins/kafka-end-to-end.py](jenkins/kafka-end-to-end.py) | Order-to-consumers check the pipeline runs against the built stack |
 | [jenkins/market-fixture.sql](jenkins/market-fixture.sql) | Constant-price PostgreSQL replay fixture for the disposable end-to-end stack |
@@ -156,6 +158,10 @@ Account history and statement export use the same Client UI stages: unit tests c
 Maven runs through [maven-retry.sh](jenkins/maven-retry.sh), which repeats a run up to three times when it failed only because Maven Central refused or dropped a download (for example a 502); any other failure, such as a failing test, stops at once. Without it, one bad download in a parallel test branch aborted every other branch. For the same reason [Dockerfile.market-data](docker/Dockerfile.market-data) installs its Python packages with a 120 second read timeout and 10 retries: its pyarrow, duckdb and numpy wheels are large, and pip's 15 second default failed the Synthetic Market Data Integration stage on a slow connection.
 
 Cleanup always removes the build-scoped test containers, volumes, and images, stops and removes the local stack, its volumes, and the images it built whenever this build started it (pass or fail; the pulled PostgreSQL and Kafka images stay), trims Docker caches, and deletes the workspace. Playwright images and Maven and npm caches are kept only when at least 6 GiB will remain free.
+
+### AWS deployment job
+
+[Jenkinsfile.aws](jenkins/Jenkinsfile.aws) is a second, separate job for the Jenkins host in AWS. It runs no tests: continuous integration stays on the local Jenkins and this pipeline, with no SCM trigger, is started by hand after a green CI build of the same commit. Its agent needs Docker, the AWS CLI, git, python3 and curl, and takes its AWS access from the EC2 instance profile; it holds no keys. Each run builds the four service images from the checked-out commit, pushes them to ECR tagged with the short commit hash and the build number, registers a new revision of each service's current task definition with only the image changed, rolls the four services and waits for them to stabilise. `RUN_MIGRATIONS` applies [init-db.sh](docker/init-db.sh) to RDS first; `DEPLOY_UI` builds both UIs in a Node container, syncs them to S3 with the [cache headers](#static-uis-on-s3), invalidates CloudFront and checks the routes; `DESIRED_COUNT` sets the task count per service, which is how paused services come back. Environment and secrets live in the registered task definitions, rendered from [aws/ecs/](aws/ecs); the job never edits them.
 
 ### SonarQube
 

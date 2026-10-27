@@ -39,5 +39,5 @@ USER appuser
 # Copy only the compiled jar from the build stage. Nothing else.
 COPY --from=build /app/apps/holdings-and-trade-service/target/holdings-and-trade-service.jar app.jar
 
-EXPOSE 8081
+EXPOSE 8082
 ENTRYPOINT ["java", "-jar", "app.jar"]

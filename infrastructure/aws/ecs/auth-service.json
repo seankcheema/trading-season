@@ -1,0 +1,49 @@
+{
+  "family": "auth-service",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "{{EXECUTION_ROLE_ARN}}",
+  "containerDefinitions": [
+    {
+      "name": "auth-service",
+      "image": "{{REGISTRY}}/team2/auth-service:{{IMAGE_TAG}}",
+      "essential": true,
+      "portMappings": [{ "containerPort": 3001, "protocol": "tcp" }],
+      "environment": [
+        { "name": "NODE_ENV", "value": "production" },
+        { "name": "PORT", "value": "3001" },
+        { "name": "DB_HOST", "value": "{{RDS_ENDPOINT}}" },
+        { "name": "DB_PORT", "value": "5432" },
+        { "name": "DB_NAME", "value": "trading_season" },
+        { "name": "DB_USER", "value": "trading_season" },
+        { "name": "PGSSLMODE", "value": "no-verify" },
+        { "name": "JWT_ISSUER", "value": "{{JWT_ISSUER}}" },
+        { "name": "CORS_ORIGINS", "value": "{{CORS_ORIGINS}}" },
+        { "name": "KAFKA_BOOTSTRAP_SERVERS", "value": "{{KAFKA_BOOTSTRAP_SERVERS}}" }
+      ],
+      "secrets": [
+        { "name": "DB_PASSWORD", "valueFrom": "{{DB_PASSWORD_SECRET_ARN}}" },
+        { "name": "JWT_PRIVATE_KEY", "valueFrom": "{{JWT_PRIVATE_KEY_SECRET_ARN}}" },
+        { "name": "JWT_PUBLIC_KEY", "valueFrom": "{{JWT_PUBLIC_KEY_SECRET_ARN}}" }
+      ],
+      "healthCheck": {
+        "command": ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3001/health || exit 1"],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 60
+      },
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/team2/auth-service",
+          "awslogs-region": "{{REGION}}",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ],
+  "tags": [{ "key": "TEAM", "value": "2" }]
+}
