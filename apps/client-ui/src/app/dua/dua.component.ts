@@ -78,6 +78,8 @@ const ROLL_CLICKS = 5;
 const ROLL_WINDOW_MS = 1500;
 const ROLL_MS = 900;
 const WAKE_MS = 900;
+// How long a stock page settles before Dua's forecast toast fades in.
+const FORECAST_TOAST_DELAY_MS = 1500;
 export const IDLE_WARNING_LINE =
   "Still there? I'll sign you out in a minute to keep your account safe.";
 
@@ -136,6 +138,7 @@ const DUA_TEXT_SCALE = { min: 0.9, max: 1.4 };
     './dua-forecast.css',
     './dua-launcher-pill.css',
     './dua-details-pop.css',
+    './dua-forecast-toast.css',
   ],
 })
 export class DuaComponent {
@@ -178,8 +181,9 @@ export class DuaComponent {
       ? trendReadingFor(trend, symbol, at)
       : null;
   });
+  // Loaded once Dua opens, or on a stock's page, where the forecast toast needs it.
   private readonly loadTrend = effect(() => {
-    if (!this.session.minimized() && this.trend.status() === 'idle') {
+    if ((!this.session.minimized() || this.symbol()) && this.trend.status() === 'idle') {
       this.trend.load().subscribe({ error: () => undefined });
     }
   });
@@ -193,6 +197,31 @@ export class DuaComponent {
   );
   // What Dua is saying beside the launcher, such as an order's outcome, and how it looks.
   protected readonly speech = inject(DuaSpeech);
+  // Whether a forecast covers the open stock now: a plain flag, so the moving clock does not
+  // restart what waits on it.
+  protected readonly forecastReady = computed(
+    () => !!this.symbol() && this.trending()?.kind === 'ready',
+  );
+  // The stock whose forecast the toast above the closed launcher is pointing out, else ''.
+  protected readonly forecastToast = signal('');
+  // Once a visit per stock, and only for a stock Dua has not been opened on, the toast fades in
+  // after the page settles. Opening Dua, or Dua speaking, takes it away.
+  private readonly nudgeForecast = effect((onCleanup) => {
+    const symbol = this.symbol();
+    const closed = this.session.minimized();
+    const ready = closed && this.forecastReady() && !this.speech.line();
+    untracked(() => {
+      const seen = this.session.forecastSeen;
+      if (symbol && !closed) seen.add(symbol);
+      if (!ready || this.forecastToast() !== symbol) this.forecastToast.set('');
+      if (!ready || seen.has(symbol)) return;
+      const timer = setTimeout(() => {
+        seen.add(symbol);
+        this.forecastToast.set(symbol);
+      }, FORECAST_TOAST_DELAY_MS);
+      onCleanup(() => clearTimeout(timer));
+    });
+  });
   private readonly idle = inject(SessionTimeoutService);
   // Dua dozes while the simulated market is outside regular hours, unless it has something to
   // say, and wakes with a stretch when the market opens.
@@ -1018,11 +1047,25 @@ export class DuaComponent {
     }
     const panel = this.panel()?.nativeElement;
     const launcher = this.launcher()?.nativeElement;
-    if ((panel && path.includes(panel)) || (launcher && path.includes(launcher))) {
+    if (
+      (panel && path.includes(panel)) ||
+      (launcher && path.includes(launcher)) ||
+      inside('forecast-toast')
+    ) {
       return;
     }
     // Leave focus on the control the user clicked, rather than returning to the launcher.
     this.minimize(false);
+  }
+
+  /** The forecast toast opens Dua on This Stock, whose first card is the forecast. */
+  protected openForecastToast(): void {
+    this.forecastToast.set('');
+    this.session.minimized.set(false);
+    if (!this.historyLoading()) {
+      this.select('stock');
+    }
+    this.timers.push(setTimeout(() => this.panel()?.nativeElement.focus()));
   }
 
   protected minimize(restoreFocus = true): void {

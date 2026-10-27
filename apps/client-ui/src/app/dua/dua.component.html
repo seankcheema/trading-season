@@ -81,6 +81,9 @@
                     ? 'Daily Review'
                     : 'Portfolio Analysis'
               "
+              [attr.aria-description]="
+                item === 'stock' && forecastReady() ? 'Includes a model forecast' : null
+              "
               [disabled]="historyLoading()"
               (click)="select($any(item))"
             >
@@ -108,13 +111,21 @@
                     <span class="new-label">New</span>
                   }
                 </span>
-                <small>{{
-                  item === 'stock'
-                    ? 'What to consider next'
-                    : item === 'daily'
-                      ? 'Your day at a glance'
-                      : 'Your performance and next steps'
-                }}</small></span
+                <small>
+                  @if (item === 'stock' && forecastReady()) {
+                    <span class="choice-forecast"
+                      ><span class="forecast-mark" aria-hidden="true"></span>Forecast</span
+                    >
+                    ·
+                  }
+                  {{
+                    item === 'stock'
+                      ? 'What to consider next'
+                      : item === 'daily'
+                        ? 'Your day at a glance'
+                        : 'Your performance and next steps'
+                  }}</small
+                ></span
               >
               <ng-icon class="choice-chevron" name="lucideChevronRight" aria-hidden="true" />
             </button>
@@ -472,6 +483,24 @@
   </div>
 </section>
 <app-dua-speech-bubble />
+<div role="status">
+  @if (forecastToast(); as forecastSymbol) {
+    <div
+      class="forecast-toast"
+      (animationend)="$event.target === $event.currentTarget && forecastToast.set('')"
+    >
+      <button type="button" class="forecast-toast-button" (click)="openForecastToast()">
+        <span class="forecast-toast-label"
+          ><span class="forecast-mark" aria-hidden="true"></span>Forecast ready</span
+        >&ngsp;
+        <span class="forecast-toast-text"
+          >Ask Dua about {{ forecastSymbol }}'s next {{ trend.trend()?.horizonDays ?? 5 }} trading
+          days</span
+        >
+      </button>
+    </div>
+  }
+</div>
 <button
   #launcher
   class="dua-launcher"

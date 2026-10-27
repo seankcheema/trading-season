@@ -1,0 +1,114 @@
+/*
+ * The forecast toast: above the closed launcher, pointing down at Dua, it says a forecast is ready
+ * for the open stock. It fades in, holds (paused while hovered or focused) and fades out, and the
+ * component removes it when its animation ends. Above the launcher, not beside it, so it never
+ * sits on the order ticket's button.
+ */
+.forecast-toast {
+  position: absolute;
+  right: 0;
+  bottom: 84px;
+  z-index: 1;
+  width: max-content;
+  max-width: min(17.5rem, calc(100vw - 32px));
+  animation: dua-forecast-toast 7s ease both;
+}
+.forecast-toast:hover,
+.forecast-toast:focus-within {
+  animation-play-state: paused;
+}
+.forecast-toast-button {
+  position: relative;
+  display: grid;
+  gap: 2px;
+  padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--primary) 45%, var(--border));
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow:
+    0 12px 28px -12px #000b,
+    0 0 22px -8px color-mix(in srgb, var(--primary) 55%, transparent);
+  color: var(--foreground);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+/* Its tail points at Dua's launcher below. */
+.forecast-toast-button::after {
+  content: '';
+  position: absolute;
+  right: 31px;
+  bottom: -6px;
+  width: 10px;
+  height: 10px;
+  border-right: 1px solid color-mix(in srgb, var(--primary) 45%, var(--border));
+  border-bottom: 1px solid color-mix(in srgb, var(--primary) 45%, var(--border));
+  background: var(--card);
+  transform: rotate(45deg);
+}
+.forecast-toast-button:hover {
+  border-color: color-mix(in srgb, var(--primary) 70%, var(--border));
+}
+.forecast-toast-button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.forecast-toast-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.forecast-toast-text {
+  font-size: 13px;
+  font-weight: 500;
+}
+@keyframes dua-forecast-toast {
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  6%,
+  92% {
+    opacity: 1;
+    transform: none;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+/* Under reduced motion it only fades, without moving. */
+@keyframes dua-forecast-toast-fade {
+  0% {
+    opacity: 0;
+  }
+  6%,
+  92% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .forecast-toast {
+    animation-name: dua-forecast-toast-fade;
+  }
+}
+
+/* In Dua's menu, This Stock says when a model forecast covers the stock. */
+.choice-forecast {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--primary);
+  font-weight: 600;
+}
+.choice-forecast .forecast-mark {
+  width: 5px;
+  height: 5px;
+}
