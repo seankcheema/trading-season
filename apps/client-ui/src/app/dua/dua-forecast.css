@@ -139,7 +139,7 @@
 /*
  * The record's details, in a small popover under the button rather than another window. It opens
  * in the flow, pointing up at the button: the card's content scrolls and clips anything floated
- * past its edge.
+ * past its edge. Its type matches the View Details popover's.
  */
 .forecast-pop {
   position: relative;
@@ -155,8 +155,8 @@
   box-shadow: 0 14px 32px -14px #000c;
   padding: 10px 12px;
   color: var(--dua-copy);
-  font-size: 12px;
-  line-height: 1.4;
+  font-size: 13px;
+  line-height: 1.5;
 }
 .forecast-pop::before {
   content: '';
