@@ -22,7 +22,8 @@ import { trendReadingFor } from '../trend-read/platform-trend';
  * The market page's forecast drawer: both model forecasts for the open stock in one place. It
  * leads with each call and its record as one frequency with a track strip, and keeps the reasons
  * and the scoring against simple patterns in two collapsed sections (progressive disclosure).
- * It slides in over the chart, never over the order ticket, and closes on its button or Escape.
+ * It slides in over the market tools beside the chart, never over the chart itself, and closes on
+ * its button or Escape.
  */
 @Component({
   selector: 'app-forecast-drawer',
@@ -183,6 +184,7 @@ export class ForecastDrawerComponent {
   private readonly trendStore = inject(PlatformTrendService);
   private readonly signalStore = inject(PlatformSignalsService);
   private readonly closeButton = viewChild<ElementRef<HTMLButtonElement>>('closeButton');
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
   protected readonly failed = computed(
     () => this.trendStore.status() === 'error' && this.signalStore.status() === 'error',
@@ -292,8 +294,12 @@ export class ForecastDrawerComponent {
         this.signalStore.load().subscribe({ error: () => undefined });
       }
     });
-    // Focus lands in the drawer when it opens, so Escape and the keyboard reach it.
-    afterNextRender(() => this.closeButton()?.nativeElement.focus());
+    // When it opens, the whole drawer is brought into view (it sits under the chart on smaller
+    // screens) and focus lands in it, so Escape and the keyboard reach it.
+    afterNextRender(() => {
+      this.host.nativeElement.scrollIntoView?.({ block: 'nearest' });
+      this.closeButton()?.nativeElement.focus({ preventScroll: true });
+    });
   }
 }
 
