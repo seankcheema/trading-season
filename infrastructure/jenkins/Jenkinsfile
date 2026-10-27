@@ -347,6 +347,56 @@ pipeline {
                     }
                 }
 
+                // The offline stock forecast pipeline under Holdings and Trade. Its
+                // CI requirements leave out TensorFlow, so the LSTM tests skip and
+                // the splits, leakage guards, metrics and scorecard contract run.
+                stage('Stock Forecast Tests') {
+                    environment {
+                        CI = 'true'
+                    }
+                    steps {
+                        catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                            dir('apps/holdings-and-trade-service/stock-forecast') {
+                                // The whole checkout is mounted, read by two tests only:
+                                // the scorecard contract against the client-ui file and
+                                // the platform's simulation config. Both skip otherwise.
+                                sh '''
+                                    set -eu
+                                    REPO="$(cd ../../.. && pwd)"
+                                    docker run --rm \
+                                      -e PYTHONDONTWRITEBYTECODE=1 \
+                                      -v "$REPO":"$REPO" \
+                                      -w "$(pwd)" \
+                                      python:3.14-slim \
+                                      bash -c "
+                                        # Runs as root: hand the output back to the jenkins user on any exit.
+                                        trap 'chmod -R a+rwX .' EXIT
+                                        set -eu
+                                        mkdir -p reports/junit coverage
+                                        python -m pip install -q -r requirements-ci.txt
+                                        python -m pytest -p no:cacheprovider tests/ -v \
+                                          --junit-xml=reports/junit/results.xml \
+                                          --cov=src \
+                                          --cov-report=xml:coverage/coverage.xml \
+                                          --cov-report=html:coverage/htmlcov
+                                      "
+                                '''
+                            }
+                        }
+                    }
+                    post {
+                        always {
+                            archiveArtifacts artifacts: 'apps/holdings-and-trade-service/stock-forecast/coverage/**/*, apps/holdings-and-trade-service/stock-forecast/reports/junit/**/*',
+                                              allowEmptyArchive: true
+                            catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                                junit testResults: 'apps/holdings-and-trade-service/stock-forecast/reports/junit/*.xml',
+                                      allowEmptyResults: false,
+                                      healthScaleFactor: 1.0
+                            }
+                        }
+                    }
+                }
+
                 stage('Frontend Tests') {
                     steps {
                         dir('apps/client-ui') {

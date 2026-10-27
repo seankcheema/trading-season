@@ -69,7 +69,9 @@ describe('LoginComponent', () => {
 
   it('should show an error message when the credentials are rejected', () => {
     authService.login.mockReturnValue(
-      throwError(() => new HttpErrorResponse({ status: 401, error: { message: 'Invalid credentials' } })),
+      throwError(
+        () => new HttpErrorResponse({ status: 401, error: { message: 'Invalid credentials' } }),
+      ),
     );
     const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl');
 
@@ -132,6 +134,31 @@ describe('LoginComponent', () => {
     expect(password.type).toBe('password');
   });
 
+  it('has Dua peeking over the form cover its eyes for the password, and peek once shown', () => {
+    const fixture = TestBed.createComponent(LoginComponent);
+    fixture.detectChanges();
+    const element = fixture.nativeElement as HTMLElement;
+    const mood = () => element.querySelector('[data-testid="dua-peek"]')!.getAttribute('data-mood');
+    const password = element.querySelector('#password') as HTMLInputElement;
+    const email = element.querySelector('#email') as HTMLInputElement;
+    const toggle = element.querySelector('button[aria-label$="password"]') as HTMLButtonElement;
+    const move = (from: Element | null, to: Element) => {
+      from?.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: to }));
+      to.dispatchEvent(new FocusEvent('focusin', { bubbles: true, relatedTarget: from }));
+      fixture.detectChanges();
+    };
+
+    expect(mood()).toBe('happy');
+    move(email, password);
+    expect(mood()).toBe('shy');
+    move(password, toggle);
+    toggle.click();
+    fixture.detectChanges();
+    expect(mood()).toBe('peek');
+    move(toggle, email);
+    expect(mood()).toBe('happy');
+  });
+
   describe('after repeated rejected sign-ins', () => {
     const rejected = () => throwError(() => new HttpErrorResponse({ status: 401 }));
 
@@ -171,8 +198,29 @@ describe('LoginComponent', () => {
       const alert = fixture.nativeElement.querySelector('[role="alert"]') as HTMLElement;
       expect(alert.textContent).toContain('Too many failed sign-in attempts');
       expect(alert.textContent).toContain('locked for 10 minutes');
+      expect(alert.querySelector('app-dua-figure')?.getAttribute('data-mood')).toBe('worried');
+      expect(
+        fixture.nativeElement.querySelector('[data-testid="dua-peek"]').getAttribute('data-mood'),
+      ).toBe('worried');
       expect(submitButton(fixture).disabled).toBe(true);
       expect(submitButton(fixture).textContent).toContain('Try again in 10:00');
+    });
+
+    it('makes Dua sweat only while the lock lasts', () => {
+      const peekFigure = (fixture: ReturnType<typeof submitTimes>) =>
+        fixture.nativeElement.querySelector(
+          '[data-testid="dua-peek"] app-dua-figure',
+        ) as HTMLElement;
+
+      const twice = submitTimes(2);
+      expect(peekFigure(twice).classList).not.toContain('sweating');
+
+      const fixture = submitTimes(1);
+      expect(peekFigure(fixture).classList).toContain('sweating');
+
+      vi.advanceTimersByTime(600_000);
+      fixture.detectChanges();
+      expect(peekFigure(fixture).classList).not.toContain('sweating');
     });
 
     it('sends no further sign-in requests while locked', () => {

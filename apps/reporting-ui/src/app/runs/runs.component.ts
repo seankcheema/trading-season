@@ -85,7 +85,7 @@ interface SavedChart {
 // trades per day, and traded value by client segment, symbol and account. The
 // ranges are Activity's. All time is the run's report.json; a narrower range is
 // the service's cut of the same run. The charts are offered as PNG downloads for
-// the range on screen, and whole for any earlier run still on disk.
+// the range on screen.
 @Component({
   selector: 'app-runs',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -271,14 +271,7 @@ export class RunsComponent {
     }));
   });
 
-  // Runs still on disk besides the one shown. The service normally keeps only the newest.
-  protected readonly earlierRuns = computed(() => {
-    const shown = this.store.report()?.runId;
-    return this.store.runs().filter((run) => run.runId !== shown);
-  });
-
   protected readonly dateTime = dateTime;
-  protected readonly plural = plural;
 
   protected chartTitle(name: string): string {
     return CHART_TITLES[name] ?? name;
@@ -292,19 +285,19 @@ export class RunsComponent {
   // Saves a chart PNG. Fetched as a blob because a link cannot carry the bearer token.
   // The service keeps only its newest run, so the run on screen can be gone before the
   // next status poll brings the one that replaced it. Its chart then comes from that
-  // newest run, which covers the same events and more. The run on screen is drawn
-  // over the range it is shown in, and the file says which; an earlier run is whole.
-  protected download(name: string, runId = this.store.report()!.runId): void {
+  // newest run, which covers the same events and more. The chart is drawn over the
+  // range on screen, and the file says which.
+  protected download(name: string): void {
     this.downloadFailed.set(false);
-    const onScreen = runId === this.store.report()?.runId;
-    const range = onScreen ? this._shownRange() : 'all';
+    const runId = this.store.report()!.runId;
+    const range = this._shownRange();
     const period = range === 'all' ? '' : `${range}-`;
     this._api
       .runFile(runId, name, range)
       .pipe(
         map((file): SavedChart => ({ runId, file })),
         catchError((error: unknown) =>
-          onScreen && error instanceof HttpErrorResponse && error.status === 404
+          error instanceof HttpErrorResponse && error.status === 404
             ? this.fromNewestRun(name, runId, range)
             : throwError(() => error),
         ),

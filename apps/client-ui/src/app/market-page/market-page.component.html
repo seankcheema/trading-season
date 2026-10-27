@@ -1,12 +1,7 @@
 <main class="market-page bg-background text-foreground" [attr.inert]="termsRequired() ? '' : null">
   <header class="market-nav bg-background/95 px-4 backdrop-blur-xl md:px-6">
     <div class="market-nav-inner mx-auto flex h-full max-w-[1600px] items-center gap-3">
-      <a
-        routerLink="/dashboard"
-        [queryParams]="{ accountId: accountStore.selectedAccountId() }"
-        class="nav-back"
-        aria-label="Back to dashboard"
-      >
+      <a routerLink="/dashboard" class="nav-back" aria-label="Back to dashboard">
         <ng-icon name="lucideChevronLeft" />
       </a>
       <div class="mr-auto min-w-48 max-w-2xl flex-1">
@@ -257,7 +252,7 @@
                         <ng-icon name="lucideSlidersHorizontal" /> Indicators
                         @if (enabledIndicators().length) {
                           <span
-                            class="text-black bg-primary/15 inline-flex size-4 items-center justify-center rounded-full text-[9px]"
+                            class="bg-primary-foreground/20 inline-flex size-4 items-center justify-center rounded-full text-[9px]"
                             >{{ enabledIndicators().length }}</span
                           >
                         }
@@ -440,6 +435,9 @@
                               [showCurrentPrice]="true"
                               [(liveTailing)]="liveTailing"
                               [showLiveTailing]="true"
+                              [showForecast]="true"
+                              [forecastOpen]="forecastOpen()"
+                              (forecastToggle)="toggleForecast()"
                               [interactionKey]="active.symbol"
                               [candles]="chartCandles()"
                               [points]="chartPoints()"
@@ -567,8 +565,11 @@
                           interactive
                           tooltipPlacement="top"
                           [showCurrentPrice]="true"
-                              [(liveTailing)]="liveTailing"
-                              [showLiveTailing]="true"
+                          [(liveTailing)]="liveTailing"
+                          [showLiveTailing]="true"
+                          [showForecast]="true"
+                          [forecastOpen]="forecastOpen()"
+                          (forecastToggle)="toggleForecast()"
                           [interactionKey]="active.symbol"
                           [candles]="chartCandles()"
                           [points]="chartPoints()"
@@ -619,10 +620,7 @@
                       role="tablist"
                       aria-label="Instrument tools"
                     >
-                      @for (
-                        tab of ['trading', 'recent-orders'];
-                        track tab
-                      ) {
+                      @for (tab of ['trading', 'recent-orders']; track tab) {
                         <button
                           type="button"
                           role="tab"
@@ -633,11 +631,9 @@
                               : 'text-muted-foreground hover:text-foreground'
                           "
                           [attr.aria-selected]="insightTab() === tab"
-                          (click)="insightTab.set($any(tab))"
+                          (click)="selectTab($any(tab))"
                         >
-                          {{
-                            tab === 'recent-orders' ? 'Recent Orders' : (tab | titlecase)
-                          }}
+                          {{ tab === 'recent-orders' ? 'Recent Orders' : (tab | titlecase) }}
                         </button>
                       }
                     </div>
@@ -774,15 +770,14 @@
                               <li app-activity-row-skeleton></li>
                             }
                           } @else {
-                            <li class="text-muted-foreground py-6 text-center text-sm">
-                              No orders at this simulated time.
+                            <li class="text-muted-foreground py-6 text-sm">
+                              <app-dua-empty>No orders at this simulated time.</app-dua-empty>
                             </li>
                           }
                         }
                       </ul>
                     </div>
                   }
-
                 }
               </section>
             </aside>
@@ -794,7 +789,10 @@
 </main>
 
 @if (settingsOpen()) {
-  <app-settings-dialog (closed)="settingsOpen.set(false)" (clockApplied)="onClockSnapshot($event)" />
+  <app-settings-dialog
+    (closed)="settingsOpen.set(false)"
+    (clockApplied)="onClockSnapshot($event)"
+  />
 }
 
 @if (accountDialog(); as dialog) {
@@ -814,5 +812,10 @@
   [sessionId]="sessionId()"
   [marketTimestamp]="marketTimestamp()"
 />
-
-<app-dua [holdings]="simulationHoldings().get(accountStore.selectedAccountId() ?? -1) ?? []" [quotes]="instruments()" [symbol]="symbol()" [connected]="connected()" />
+<app-dua
+  [openOutlook]="duaOutlook()"
+  [holdings]="simulationHoldings().get(accountStore.selectedAccountId() ?? -1) ?? []"
+  [quotes]="instruments()"
+  [symbol]="symbol()"
+  [connected]="connected()"
+/>

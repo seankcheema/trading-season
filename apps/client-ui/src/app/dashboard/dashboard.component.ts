@@ -28,6 +28,7 @@ import {
   computed,
   effect,
   inject,
+  linkedSignal,
   signal,
   untracked,
 } from '@angular/core';
@@ -78,6 +79,7 @@ import { TickAnimations } from './shared/tick-animations';
 import { TimeframeToggleComponent } from './shared/timeframe-toggle.component';
 import { DashboardTourComponent, TourExit } from './tour/dashboard-tour.component';
 import { TourProgressService } from './tour/tour-progress.service';
+import { DuaEmptyComponent } from '../dua/dua-empty.component';
 
 type HeaderDropdown = 'account' | 'profile';
 
@@ -93,6 +95,7 @@ type AccountDialog =
   imports: [
     ThemeToggleComponent,
     DuaComponent,
+    DuaEmptyComponent,
     OrderEditorComponent,
     ActivityRowComponent,
     ActivityRowSkeletonComponent,
@@ -159,16 +162,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
   protected readonly accounts = this.accountStore.accounts;
   protected readonly selectedAccount = this.accountStore.selectedAccount;
   protected readonly selectedAccountId = this.accountStore.selectedAccountId;
-  private initialAccountRestored = false;
-  private readonly restoreAccount = effect(() => {
-    const id = Number(this._router.routerState.snapshot.root.firstChild?.queryParams['accountId']);
-    if (this.accountStore.status() === 'ready' && !this.initialAccountRestored) {
-      this.initialAccountRestored = true;
-      if (id > 0) {
-        this.accountStore.selectAccount(id);
-      }
-    }
-  });
   protected readonly hasAccounts = computed(() => this.accounts().length > 0);
   // Until the accounts arrive there is no balance, holding or cash transfer to show, so the
   // cards that depend on them show placeholders instead of zeros and empty states.
@@ -226,7 +219,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
     })),
   );
   protected readonly portfolioTabs = computed<SegmentedTab<'assets' | 'watchlist'>[]>(() => [
-    { id: 'assets', label: 'Assets', count: this.accountsLoading() ? null : this.visibleAssets().length },
+    {
+      id: 'assets',
+      label: 'Assets',
+      count: this.accountsLoading() ? null : this.visibleAssets().length,
+    },
     {
       id: 'watchlist',
       label: 'Watch List',
@@ -339,6 +336,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
     const symbol = this.orderSymbol();
     return symbol ? (findInstrument(symbol, this.instruments()) ?? null) : null;
   });
+  // The stock Dua's This Stock choice reviews: the order dialog's, following its search.
+  protected readonly duaSymbol = linkedSignal(() => this.orderSymbol() ?? '');
 
   // The selected account's portfolio.
   protected readonly holdings = computed(() =>
@@ -399,7 +398,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
   protected readonly tradingCashBalance = this.accountStore.spendableFunds;
   protected readonly tradingPositions = computed(() =>
     Object.fromEntries(
-      this.accountStore.selectedHoldings().map((holding) => [holding.symbol, holding.availableQuantity ?? holding.quantity]),
+      this.accountStore
+        .selectedHoldings()
+        .map((holding) => [holding.symbol, holding.availableQuantity ?? holding.quantity]),
     ),
   );
 

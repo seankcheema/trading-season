@@ -186,6 +186,7 @@ export function decodeJwtPayload(token: string): Record<string, unknown> {
  */
 export class ApiStub {
   readonly requests: RecordedRequest[] = [];
+  private readonly duaViewed = new Set<string>();
   private readonly watchlists = new Map<string, { symbol: string; createdAt: string }[]>();
 
   private readonly accounts = new Map<string, StoredAccount>();
@@ -274,6 +275,40 @@ export class ApiStub {
     await page.route('**/api/registration', (route) => this.registerProfile(route));
     await page.route('**/api/registration/account-exists', (route) => this.accountExists(route));
     await page.route(/\/api\/me\/watchlist(?:\/[^/?]+)?$/, (route) => this.watchlist(route));
+    await page.route(/\/api\/me\/dua\/read-state(?:\/query)?$/, async (route) => {
+      const owner = await this.caller(route);
+      if (!owner) return;
+      const body = this.body(route);
+      const contexts = route.request().method() === 'POST' ? body['contexts'] : [body];
+      if (!Array.isArray(contexts) || contexts.length > 20) {
+        await this.json(route, 400, {});
+        return;
+      }
+      if (
+        contexts.some((c) => !this.ownedAccounts(owner).some((a) => a.accountId === c.accountId))
+      ) {
+        await this.json(route, 404, {});
+        return;
+      }
+      const key = (c: Record<string, unknown>) =>
+        JSON.stringify([
+          owner,
+          c['accountId'],
+          c['sessionId'],
+          c['insight'],
+          c['symbol'],
+          c['version'],
+        ]);
+      if (route.request().method() === 'PUT') {
+        this.duaViewed.add(key(body));
+        await this.json(route, 200, null);
+      } else
+        await this.json(
+          route,
+          200,
+          contexts.filter((c) => this.duaViewed.has(key(c))),
+        );
+    });
     await page.route('**/api/orders', (route) => this.orderRequest(route));
     await page.route('**/api/orders/stream', (route) => this.orderStream(route));
     await page.route(/\/api\/orders\/\d+\/audit$/, (route) => this.orderAuditRequest(route));
@@ -303,23 +338,45 @@ export class ApiStub {
         ]);
     });
     await page.route('**/api/users/me/execution-settings', async (route) => {
-      const owner = await this.caller(route); if (!owner) return;
+      const owner = await this.caller(route);
+      if (!owner) return;
       if (route.request().method() === 'PUT') {
         const value = this.body(route)['executionBufferPercent'];
-        if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 10 || Math.abs(value * 100 - Math.round(value * 100)) > 1e-8) {
-          await this.json(route, 400, { error: 'Invalid execution buffer' }); return;
+        if (
+          typeof value !== 'number' ||
+          !Number.isFinite(value) ||
+          value < 0 ||
+          value > 10 ||
+          Math.abs(value * 100 - Math.round(value * 100)) > 1e-8
+        ) {
+          await this.json(route, 400, { error: 'Invalid execution buffer' });
+          return;
         }
         this.executionBuffers.set(owner, value);
       }
-      await this.json(route, 200, { executionBufferPercent: this.executionBuffers.get(owner) ?? 1 });
+      await this.json(route, 200, {
+        executionBufferPercent: this.executionBuffers.get(owner) ?? 1,
+      });
     });
     await page.route(/\/api\/orders\/\d+\/cancel$/, async (route) => {
-      const owner = await this.caller(route); if (!owner) return;
+      const owner = await this.caller(route);
+      if (!owner) return;
       const id = Number(new URL(route.request().url()).pathname.split('/')[3]);
       const order = (this.orders.get(owner) ?? []).find((candidate) => candidate.orderId === id);
-      if (!order) { await this.json(route, 404, { error: 'Order not found' }); return; }
-      if (!['ACCEPTED', 'CANCELLED'].includes(order.status)) { await this.json(route, 409, { error: 'Order is terminal' }); return; }
-      Object.assign(order, { status: 'CANCELLED', reservedCash: 0, reservedShares: 0, resolvedAt: new Date().toISOString() });
+      if (!order) {
+        await this.json(route, 404, { error: 'Order not found' });
+        return;
+      }
+      if (!['ACCEPTED', 'CANCELLED'].includes(order.status)) {
+        await this.json(route, 409, { error: 'Order is terminal' });
+        return;
+      }
+      Object.assign(order, {
+        status: 'CANCELLED',
+        reservedCash: 0,
+        reservedShares: 0,
+        resolvedAt: new Date().toISOString(),
+      });
       await this.json(route, 200, order);
     });
     await page.route('**/api/users/me', (route) => this.ownProfile(route));
@@ -431,13 +488,19 @@ export class ApiStub {
     }
     const profile = [...this.accounts.values()].find((a) => a.id === owner)!.profile!;
     const buffer = this.executionBuffers.get(owner) ?? 1;
-    const executionType = (body['executionType'] ?? 'MARKET') as NonNullable<OrderResult['executionType']>;
+    const executionType = (body['executionType'] ?? 'MARKET') as NonNullable<
+      OrderResult['executionType']
+    >;
     const limit = body['limitPrice'] == null ? null : Number(body['limitPrice']);
     const stop = body['stopPrice'] == null ? null : Number(body['stopPrice']);
     const open = (this.orders.get(owner) ?? []).filter((order) => order.status === 'ACCEPTED');
     const reserved = open.reduce((sum, order) => sum + (order.reservedCash ?? 0), 0);
     const cost = quantity * (limit ?? price * (1 + buffer / 100));
-    const eligible = executionType === 'MARKET' || (executionType === 'LIMIT' && limit !== null && (side === 'BUY' ? price <= limit : price >= limit));
+    const eligible =
+      executionType === 'MARKET' ||
+      (executionType === 'LIMIT' &&
+        limit !== null &&
+        (side === 'BUY' ? price <= limit : price >= limit));
     const funds = Number(profile['availableFunds']) - reserved;
     const held = account.holdings.find((h) => h.symbol === symbol);
     const reason =
@@ -454,8 +517,13 @@ export class ApiStub {
       orderType: side,
       quantity,
       indicativePrice: price,
-      executionType, limitPrice: limit, stopPrice: stop, bufferPercent: buffer,
-      referencePrice: price, referenceAt: this.marketTimestamp, sessionId: 1,
+      executionType,
+      limitPrice: limit,
+      stopPrice: stop,
+      bufferPercent: buffer,
+      referencePrice: price,
+      referenceAt: this.marketTimestamp,
+      sessionId: 1,
       reservedCash: !reason && !eligible && side === 'BUY' ? cost : 0,
       reservedShares: !reason && !eligible && side === 'SELL' ? quantity : 0,
       executionPrice: !reason && eligible ? price : null,
@@ -594,7 +662,12 @@ export class ApiStub {
     const owner = this.accounts.get(email.toLowerCase());
     const orders = owner ? this.orders.get(owner.id) : undefined;
     const index = orders?.findIndex((order) => order.orderId === orderId) ?? -1;
-    if (!owner?.profile || !orders || index < 0 || !['PENDING', 'ACCEPTED'].includes(orders[index].status)) {
+    if (
+      !owner?.profile ||
+      !orders ||
+      index < 0 ||
+      !['PENDING', 'ACCEPTED'].includes(orders[index].status)
+    ) {
       throw new Error(`No pending order ${orderId} for ${email}`);
     }
     const pending = orders[index];
@@ -625,7 +698,10 @@ export class ApiStub {
     const queue = this.streamFrames.get(owner.id) ?? [];
     queue.push(`event: order-status\ndata: ${JSON.stringify(frame)}\n\n`);
     this.streamFrames.set(owner.id, queue);
-    this.streamWaiters.get(owner.id)?.splice(0).forEach((release) => release());
+    this.streamWaiters
+      .get(owner.id)
+      ?.splice(0)
+      .forEach((release) => release());
   }
 
   /** Trading accounts the business backend holds for a user, oldest first. */

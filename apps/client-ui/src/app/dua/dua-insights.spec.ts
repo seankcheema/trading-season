@@ -11,8 +11,12 @@ import {
   stockPreviewCards,
   holdingsPreviewCards,
   DUA_EXPLANATIONS,
+  highlightParts,
   insightTextParts,
+  outlookForecastRecord,
   sparklinePoints,
+  trendForecastRecord,
+  watchlistPulse,
 } from './dua-insights';
 
 describe('Dua insights', () => {
@@ -276,5 +280,94 @@ describe('Dua insights', () => {
         'America/Chicago',
       ).detail,
     ).toContain('+400.0%');
+  });
+  it('summarizes only watchlist stocks without naming them', () => {
+    const quotes = [quote('UP', 110, 10), quote('DOWN', 95, -5), quote('OTHER', 150, 50)];
+    const card = watchlistPulse(['UP', 'DOWN', 'MISSING'], quotes);
+    expect(card.title).toBe('Your watchlist since the open');
+    expect(card.metrics?.map((m) => [m.label, m.value])).toEqual([
+      ['Rising', '1'],
+      ['Falling', '1'],
+    ]);
+    expect(card.text).toBe(
+      'On average, your watchlist stocks moved +2.5% since the open. 2 of 3 have prices.',
+    );
+    expect(JSON.stringify(card)).not.toMatch(/"UP"|DOWN|OTHER/);
+    expect(watchlistPulse(['UP'], quotes).takeaway).toBe('Most of your watchlist is rising.');
+    expect(watchlistPulse(['DOWN'], quotes).takeaway).toBe('Most of your watchlist is falling.');
+    expect(watchlistPulse(['FLAT'], [quote('FLAT', 100, 0)]).takeaway).toBe(
+      'Your watchlist is unchanged since the open.',
+    );
+    expect(watchlistPulse(['MISSING'], quotes).takeaway).toBe('Watchlist prices are unavailable.');
+    expect(watchlistPulse([], quotes).takeaway).toBe('Your watchlist is empty.');
+    expect(watchlistPulse(null, quotes).takeaway).toBe('Your watchlist is unavailable.');
+  });
+
+  it('keeps a forecast record as a confidence score and how often it called', () => {
+    expect(
+      trendForecastRecord({
+        call: 'down',
+        signalHits: 12,
+        signalCalls: 16,
+        signalWeeks: 24,
+      }),
+    ).toEqual({
+      hits: 12,
+      total: 16,
+      unit: 'calls',
+      percent: 75,
+      called: true,
+      coverage: 'Called 16 of the last 24 weeks; it makes no call on weeks too weak to read.',
+    });
+    expect(
+      trendForecastRecord({
+        call: 'up',
+        signalHits: 0,
+        signalCalls: 0,
+        signalWeeks: 3,
+      }),
+    ).toBeUndefined();
+    const outlook = { modelHits: 15, modelDays: 20, ruleHits: 12, ruleDays: 20 };
+    expect(outlookForecastRecord({ ...outlook, source: 'model' })).toEqual({
+      hits: 15,
+      total: 20,
+      unit: 'weeks',
+      percent: 75,
+      called: true,
+    });
+    expect(outlookForecastRecord({ ...outlook, source: 'rule' })).toEqual({
+      hits: 12,
+      total: 20,
+      unit: 'weeks',
+      percent: 60,
+      called: true,
+    });
+    expect(outlookForecastRecord({ ...outlook, modelDays: 0, source: 'model' })).toBeUndefined();
+    expect(
+      trendForecastRecord({
+        call: null,
+        signalHits: 8,
+        signalCalls: 10,
+        signalWeeks: 14,
+      })?.called,
+    ).toBe(false);
+  });
+
+  it('splits a takeaway around its coloured phrase, and leaves one without it whole', () => {
+    expect(
+      highlightParts({
+        text: '',
+        takeaway: 'Expect bigger price swings.',
+        highlight: { text: 'bigger price swings', tone: 'more' },
+      }),
+    ).toEqual(['Expect ', 'bigger price swings', '.']);
+    expect(highlightParts({ text: '', takeaway: 'Hold your current positions.' })).toBeNull();
+    expect(
+      highlightParts({
+        text: '',
+        takeaway: 'Volatility forecast unavailable.',
+        highlight: { text: 'bigger price swings', tone: 'more' },
+      }),
+    ).toBeNull();
   });
 });

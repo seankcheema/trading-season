@@ -94,3 +94,9 @@ Authenticated `GET /api/users/me/execution-settings` returns `{"executionBufferP
 New profiles default to 1%. Migration V011 replaces the historical 0% default with 1% for existing profiles while retaining valid nonzero values. Orders snapshot the preference at acceptance, so changes affect new orders only. See the [Order API](../order-and-sell-service/api.md) for buffer rules and order types.
 
 `GET /api/users/me` retains `availableFunds` as total cash and adds `reservedCash` and `spendableFunds`. The latter equals total cash minus all open BUY reservations across the owner's accounts. Withdrawals enforce this spendable amount under the user lock. Holdings responses retain total `quantity` and add `reservedShares` and `availableQuantity`; valuations continue to use total cash and positions. Order and Sell alone writes reservations on orders.
+
+## Dua read state
+
+`POST /api/me/dua/read-state/query` accepts `{ "contexts": [...] }` (at most 20) and returns previously viewed contexts from that list. `PUT /api/me/dua/read-state` acknowledges one exact context. Both require a trader token and derive identity from its subject; each account is ownership-checked (404 for missing or another user's account). ADMIN and ANALYST requests remain forbidden by the existing method restrictions.
+
+A context contains `accountId` (positive integer), `sessionId` (positive integer), `insight` (`stock`, `daily`, `holdings`), `symbol` (uppercase stock symbol, empty for account summaries), and `version` (nonempty opaque string, at most 4096 characters). Invalid contexts answer 400. PUT is idempotent and returns an empty 200 response. Exact versions are retained independently: viewing an old snapshot never acknowledges a newer one. Account identifiers are sent only in JSON bodies, never navigation URLs. This UI preference is not published to reporting.

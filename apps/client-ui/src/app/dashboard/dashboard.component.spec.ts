@@ -470,6 +470,30 @@ describe('DashboardComponent', () => {
     expect(fixture.nativeElement.querySelector('[role="dialog"]')).not.toBeNull();
   });
 
+  it('gives Dua the order dialog stock and lifts it over the dialog', async () => {
+    const fixture = createDashboard();
+    const component = fixture.componentInstance;
+    const dua = () => fixture.nativeElement.querySelector('app-dua') as HTMLElement;
+    fixture.detectChanges();
+    expect(component['duaSymbol']()).toBe('');
+    expect(dua().style.zIndex).toBe('');
+
+    component['openOrder'](MOCK_INSTRUMENTS[0]);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(component['duaSymbol']()).toBe(MOCK_INSTRUMENTS[0].symbol);
+    expect(dua().style.zIndex).toBe('60');
+
+    const ticket = fixture.debugElement.query((el) => el.name === 'app-order-submission');
+    ticket.triggerEventHandler('symbolChange', MOCK_INSTRUMENTS[1].symbol);
+    expect(component['duaSymbol']()).toBe(MOCK_INSTRUMENTS[1].symbol);
+
+    component['closeOrder']();
+    fixture.detectChanges();
+    expect(component['duaSymbol']()).toBe('');
+    expect(dua().style.zIndex).toBe('');
+  });
+
   it('should keep the dialog open after an order so its outcome stays visible', () => {
     const fixture = createDashboard();
     fixture.detectChanges();
@@ -2152,7 +2176,7 @@ describe('DashboardComponent', () => {
 
       flushAccounts(fixture);
 
-      expect(tour(fixture)?.textContent).toContain('Welcome to TradingSeason');
+      expect(tour(fixture)?.textContent).toContain("Hi, I'm Dua");
       expect(content(fixture).hasAttribute('inert')).toBe(true);
     });
 
@@ -2188,7 +2212,7 @@ describe('DashboardComponent', () => {
         .flush({ ...PROFILE, availableFunds: CASH, termsAccepted: true });
       fixture.detectChanges();
 
-      expect(tour(fixture)?.textContent).toContain('Welcome to TradingSeason');
+      expect(tour(fixture)?.textContent).toContain("Hi, I'm Dua");
     });
 
     it('does not open by itself once finished or skipped', () => {
@@ -2232,7 +2256,7 @@ describe('DashboardComponent', () => {
       fixture.detectChanges();
       await fixture.whenStable();
 
-      expect(tour(fixture)?.textContent).toContain('Meet Dua');
+      expect(tour(fixture)?.textContent).toContain("You'll find me here");
       expect(page.querySelector('app-order-submission')).toBeNull();
     });
 
@@ -2302,7 +2326,7 @@ describe('DashboardComponent', () => {
       await fixture.whenStable();
 
       expect(dropdownDetails(fixture, 'profile-dropdown').open).toBe(false);
-      expect(tour(fixture)?.textContent).toContain('Welcome to TradingSeason');
+      expect(tour(fixture)?.textContent).toContain("Hi, I'm Dua");
 
       tourButton(fixture, 'Skip').click();
       fixture.detectChanges();

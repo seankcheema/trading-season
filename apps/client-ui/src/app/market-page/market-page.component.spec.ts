@@ -1,3 +1,8 @@
+import { signal } from '@angular/core';
+import { DuaSession } from '../dua/dua-session.service';
+import { PlatformSignalsService } from './risk-outlook/platform-signals.service';
+import { PlatformTrendService } from './trend-read/platform-trend.service';
+import { SELECTED_ACCOUNT_STORAGE_KEY } from '../dashboard/accounts/account-store.service';
 import { ExecutionSettingsService } from '../dashboard/settings-dialog/execution-settings.service';
 import { of as savedExecutionPreference } from 'rxjs';
 import { provideHttpClient } from '@angular/common/http';
@@ -20,7 +25,7 @@ import { PriceChartComponent } from '../dashboard/shared/price-chart.component';
 import { MarketPageComponent } from './market-page.component';
 import { TradeTicketComponent } from '../dashboard/shared/trade-ticket.component';
 import { AuthService } from '../core/auth/auth.service';
-import { ToastService } from '../notifications/toast.service';
+import { DuaSpeech } from '../dua/dua-speech.service';
 import { OrderService } from '../dashboard/orders/order.service';
 
 const SNAPSHOT: MarketSnapshot = {
@@ -87,7 +92,13 @@ describe('MarketPageComponent', () => {
     accountId = '',
     orders: OrderResult[] = [],
     profile: { termsAccepted?: boolean } = {},
+    tab = '',
+    query: Record<string, string> = {},
   ): Promise<ComponentFixture<MarketPageComponent>> {
+    // The account this tab chose earlier, as AccountStore keeps it; never a URL parameter.
+    if (accountId) {
+      sessionStorage.setItem(SELECTED_ACCOUNT_STORAGE_KEY, accountId);
+    }
     await TestBed.configureTestingModule({
       imports: [MarketPageComponent],
       providers: [
@@ -103,10 +114,31 @@ describe('MarketPageComponent', () => {
           provide: ActivatedRoute,
           useValue: {
             paramMap: of(convertToParamMap({ symbol })),
-            queryParamMap: of(convertToParamMap({ compare, accountId })),
+            queryParamMap: of(
+              convertToParamMap({ ...(tab ? { compare, tab } : { compare }), ...query }),
+            ),
           },
         },
         { provide: MarketDataService, useValue: marketData },
+        // Dua's own suites exercise persistence and forecasts; keep trading request assertions scoped to trading.
+        {
+          provide: DuaSession,
+          useValue: {
+            minimized: signal(true),
+            forecastSeen: new Set<string>(),
+            unread: () => false,
+            query: () => {},
+            viewedSummary: () => {},
+          },
+        },
+        {
+          provide: PlatformSignalsService,
+          useValue: { signals: signal(null), status: signal('ready'), load: () => of(null) },
+        },
+        {
+          provide: PlatformTrendService,
+          useValue: { trend: signal(null), status: signal('ready'), load: () => of(null) },
+        },
       ],
     }).compileComponents();
     navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
@@ -136,10 +168,15 @@ describe('MarketPageComponent', () => {
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
+    http
+      .match((r) => r.url.startsWith('/forecast/'))
+      .forEach((r) => r.flush({}, { status: 503, statusText: 'Unavailable' }));
+    http.match((r) => r.url === '/api/me/dua/read-state/query').forEach((r) => r.flush([]));
     return fixture;
   }
 
   beforeEach(() => {
+    sessionStorage.clear();
     vi.clearAllMocks();
     marketData.candles.mockImplementation(
       (_sessionId: number, symbol: string, timeframe: Timeframe) =>
@@ -490,7 +527,9 @@ describe('MarketPageComponent', () => {
   it('positions the comparison menu under its trigger', async () => {
     const fixture = await setup();
     (
-      fixture.nativeElement.querySelector('[aria-controls="comparison-picker"]') as HTMLButtonElement
+      fixture.nativeElement.querySelector(
+        '[aria-controls="comparison-picker"]',
+      ) as HTMLButtonElement
     ).click();
     fixture.detectChanges();
 
@@ -507,16 +546,16 @@ describe('MarketPageComponent', () => {
 
     resolved.next(order({ accountId: 1, status: 'FILLED' }));
     expect(refresh).toHaveBeenLastCalledWith(1);
-    expect(TestBed.inject(ToastService).messages()).toHaveLength(0);
+    expect(TestBed.inject(DuaSpeech).line()).toBeNull();
 
     resolved.next(
       order({ accountId: undefined, status: 'REJECTED', rejectionReason: 'Out of funds' }),
     );
     expect(refresh).toHaveBeenLastCalledWith(2);
-    expect(TestBed.inject(ToastService).messages()[0].message).toBe('Out of funds');
+    expect(TestBed.inject(DuaSpeech).line()?.text).toBe('Out of funds');
 
     resolved.next(order({ accountId: undefined, status: 'REJECTED', rejectionReason: null }));
-    expect(TestBed.inject(ToastService).messages().at(-1)?.message).toBe('Order rejected.');
+    expect(TestBed.inject(DuaSpeech).line()?.text).toBe('Order rejected.');
   });
 
   it('skips the balance refresh when a resolved order has no account to refresh', async () => {
@@ -566,17 +605,51 @@ describe('MarketPageComponent', () => {
     ) as HTMLButtonElement;
 
     expect(getComputedStyle(header).position).toBe('relative');
-    expect(Number(getComputedStyle(header).zIndex)).toBeGreaterThan(30);
+    // Above the chart menus (40) so its own dropdowns open over the page, but below the
+    // dialog backdrops (50) so a dialog covers the header too.
+    expect(Number(getComputedStyle(header).zIndex)).toBeGreaterThan(40);
+    expect(Number(getComputedStyle(header).zIndex)).toBeLessThan(50);
     expect(header.classList).not.toContain('border-b');
     expect(profile.classList).toContain('border-border');
     expect(profile.className).not.toContain('border-primary');
   });
 
+  it('opens the Outlook tool when the link asks for it', async () => {
+    const fixture = await setup('aapl', '', '', [], {}, 'outlook');
+    expect(fixture.componentInstance['insightTab']()).toBe('trading');
+    expect(fixture.componentInstance['duaOutlook']()).toBe(true);
+    expect(fixture.nativeElement.querySelector('[data-testid="market-outlook"]')).toBeNull();
+  });
+
+  it("opens Dua on This Stock from the chart's Forecast button, and closes it pressed again", async () => {
+    const fixture = await setup('aapl');
+    const el = fixture.nativeElement as HTMLElement;
+    const session = TestBed.inject(DuaSession);
+    const button = el.querySelector('.forecast-toggle') as HTMLButtonElement;
+    const title = () => el.querySelector('app-dua .dua-header h2')?.textContent?.trim();
+    expect(button.getAttribute('aria-pressed')).toBe('false');
+
+    button.click();
+    fixture.detectChanges();
+    expect(session.minimized()).toBe(false);
+    expect(title()).toBe('This Stock');
+    expect(button.getAttribute('aria-pressed')).toBe('true');
+    // The market tools keep their tab.
+    expect(fixture.componentInstance['insightTab']()).toBe('trading');
+
+    button.click();
+    fixture.detectChanges();
+    expect(session.minimized()).toBe(true);
+    expect(button.getAttribute('aria-pressed')).toBe('false');
+  });
+
   it('toggles live tailing for both comparison charts from the navigation bar', async () => {
     const fixture = await setup('aapl', 'msft');
-    const button = fixture.nativeElement.querySelector('[aria-label="Live tailing"]') as HTMLButtonElement;
-    expect(button.closest('.chart-control-bar')).toBeNull();
-    expect(button.previousElementSibling?.classList).toContain('chart-control-bar');
+    const button = fixture.nativeElement.querySelector(
+      '[aria-label="Live tailing"]',
+    ) as HTMLButtonElement;
+    // A lightning toggle inside the navigation bar, still named for screen readers.
+    expect(button.closest('.chart-control-bar')).not.toBeNull();
     expect(button.textContent).toContain('Live tailing');
     expect(button.getAttribute('aria-pressed')).toBe('true');
     const charts = fixture.debugElement.queryAll(By.directive(PriceChartComponent));
@@ -590,7 +663,7 @@ describe('MarketPageComponent', () => {
     expect(charts.every((chart) => chart.componentInstance.liveTailing())).toBe(true);
   });
 
-  it('offers only Trading and Recent Orders in the market tools', async () => {
+  it('offers Trading and Recent Orders in the market tools', async () => {
     const fixture = await setup();
     const tabs = Array.from(
       fixture.nativeElement.querySelectorAll('[role="tab"]'),
@@ -1023,7 +1096,7 @@ describe('MarketPageComponent', () => {
     expect(fixture.componentInstance['recentOrders']()[0].status).toBe('FILLED');
     expect(fixture.componentInstance['orderMessage']()).toBe('');
     expect(fixture.nativeElement.querySelector('app-trade-ticket [role="status"]')).toBeNull();
-    expect(TestBed.inject(ToastService).messages()[0].message).toBe('Filled 2 AAPL at $226.10.');
+    expect(TestBed.inject(DuaSpeech).line()?.text).toBe('Filled 2 AAPL at $226.10.');
     http.verify();
   });
   it('reports an accepted order that is still open', async () => {
@@ -1035,9 +1108,7 @@ describe('MarketPageComponent', () => {
     http.expectOne('/api/accounts/2/holdings').flush([]);
     http.expectOne('/api/users/me').flush({ availableFunds: 9000 });
     fixture.detectChanges();
-    expect(TestBed.inject(ToastService).messages()[0].message).toBe(
-      'Market buy order placed for 2 AAPL.',
-    );
+    expect(TestBed.inject(DuaSpeech).line()?.text).toBe('Market buy order placed for 2 AAPL.');
     http.verify();
   });
   it('sells all owned shares and displays the execution immediately', async () => {
@@ -1131,7 +1202,7 @@ describe('MarketPageComponent', () => {
     expect(c['recentOrders']()[0].key).toBe('order-41');
     TestBed.inject(HttpTestingController).expectNone((r) => r.method === 'POST');
   });
-  it('falls back to the first owned account for invalid account links', async () => {
+  it('falls back to the first owned account when the saved one is not owned', async () => {
     const fixture = await setup('aapl', '', '999');
     expect(fixture.componentInstance['accountStore'].selectedAccountId()).toBe(1);
   });
@@ -1356,7 +1427,9 @@ describe('MarketPageComponent', () => {
       const instrument = component['instruments']().find((item) => item.symbol === 'MSFT')!;
       component['selectInstrument'](instrument);
       expect(navigate.mock.calls.at(-1)![1].queryParams).toEqual({ compare: null, accountId: 1 });
-      component['selectInstrument'](component['instruments']().find((item) => item.symbol === 'AAPL')!);
+      component['selectInstrument'](
+        component['instruments']().find((item) => item.symbol === 'AAPL')!,
+      );
       expect(navigate.mock.calls.at(-1)![1].queryParams).toEqual({ compare: 'msft', accountId: 1 });
     });
 
@@ -1406,8 +1479,15 @@ describe('MarketPageComponent', () => {
 
     it('marks the chart empty when the market has no candles', async () => {
       const fixture = await setup();
-      marketData.candles.mockImplementationOnce((_s: number, symbol: string, timeframe: Timeframe) =>
-        of({ sessionId: 7, symbol, timeframe, marketTimestamp: SNAPSHOT.marketTimestamp, points: [] }),
+      marketData.candles.mockImplementationOnce(
+        (_s: number, symbol: string, timeframe: Timeframe) =>
+          of({
+            sessionId: 7,
+            symbol,
+            timeframe,
+            marketTimestamp: SNAPSHOT.marketTimestamp,
+            points: [],
+          }),
       );
       fixture.componentInstance['candleRevision'].update((revision) => revision + 1);
       fixture.detectChanges();
@@ -1446,11 +1526,13 @@ describe('MarketPageComponent', () => {
       const http = TestBed.inject(HttpTestingController);
       http.expectOne('/api/instruments').flush({}, { status: 500, statusText: 'Error' });
       http.expectOne('/api/orders').flush({}, { status: 500, statusText: 'Error' });
-      http.match(() => true).forEach((request) => {
-        if (!request.cancelled) {
-          request.flush({}, { status: 500, statusText: 'Error' });
-        }
-      });
+      http
+        .match(() => true)
+        .forEach((request) => {
+          if (!request.cancelled) {
+            request.flush({}, { status: 500, statusText: 'Error' });
+          }
+        });
       expect(fixture.componentInstance['catalogueStatus']()).toBe('error');
     });
   });

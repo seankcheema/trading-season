@@ -1,9 +1,11 @@
 """The report run: files in, report.json and charts out."""
 
+import io
 import json
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
+import matplotlib.pyplot as plt
 import pytest
 
 from event_store import EventStore
@@ -322,6 +324,15 @@ class TestDrawChart:
         assert list(CHARTS) == report['files']
         for name in CHARTS:
             assert draw_chart(report, name).startswith(PNG_MAGIC), name
+
+    def test_draws_every_chart_light_for_download(self, events_on_disk, db_session):
+        report = run_report(events_on_disk, db_session, now=datetime(2026, 10, 6, 12, 0, tzinfo=timezone.utc))
+
+        for name in CHARTS:
+            pixels = plt.imread(io.BytesIO(draw_chart(report, name)))
+            # The corners are the figure's surface: white, whatever the theme on screen.
+            for corner in (pixels[0, 0], pixels[0, -1], pixels[-1, 0], pixels[-1, -1]):
+                assert tuple(corner[:3]) == (1.0, 1.0, 1.0), name
 
     def test_draws_a_range_nothing_occurred_in(self, tmp_path, db_session):
         report = run_report(tmp_path, db_session, now=datetime(2026, 10, 6, 12, 0, tzinfo=timezone.utc))

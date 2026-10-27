@@ -133,16 +133,21 @@ test.describe('Theme', () => {
     await expect(panel).toHaveCSS('background-color', 'rgb(255, 255, 255)');
     await expect(panel).toHaveCSS('color', 'rgb(14, 14, 14)');
 
-    for (const choice of ['Daily Review', 'My Holdings']) {
+    for (const choice of ['Daily Review', 'Portfolio Analysis']) {
       await panel.getByRole('button', { name: choice, exact: true }).click();
       const card = panel.locator('.insight-card:not(.inactive)');
-      await expect(card.locator('.primary-metric strong')).toHaveCSS('color', 'rgb(14, 14, 14)');
-      await expect(panel.locator('.dua-header')).toHaveCSS('background-color', 'rgb(255, 255, 255)');
-      await page.screenshot({ path: `reports/playwright/theme-dua-${choice === 'Daily Review' ? 'daily' : 'holdings'}-light.png` });
-      await card.getByRole('button', { name: 'Explain these numbers' }).click();
-      await expect(panel.locator('.insight-explanation')).toHaveCSS('color', 'rgb(14, 14, 14)');
+      await expect(card.locator('h3')).toHaveCSS('color', 'rgb(14, 14, 14)');
+      await expect(panel.locator('.dua-header')).toHaveCSS(
+        'background-color',
+        'rgb(255, 255, 255)',
+      );
+      await page.screenshot({
+        path: `reports/playwright/theme-dua-${choice === 'Daily Review' ? 'daily' : 'holdings'}-light.png`,
+      });
+      await card.getByRole('button', { name: 'View Details', exact: true }).click();
+      await expect(card.locator('.details-pop')).toHaveCSS('color', 'rgb(14, 14, 14)');
       await page.screenshot({ path: 'reports/playwright/theme-dua-explanation-light.png' });
-      await panel.getByRole('button', { name: 'Back to results' }).click();
+      await card.getByRole('button', { name: 'View Details', exact: true }).click();
       await panel.getByRole('button', { name: 'Back to choices' }).click();
     }
 
@@ -152,7 +157,10 @@ test.describe('Theme', () => {
     await expect(panel).toBeHidden();
     await page.getByRole('button', { name: 'Dua insights', exact: true }).click();
     await expect(panel.locator('.dua-header')).toHaveCSS('background-color', 'rgb(12, 14, 16)');
-    await expect(panel.locator('.insight-card:not(.inactive) .primary-metric strong')).toHaveCSS('color', 'rgb(255, 255, 255)');
+    await expect(panel.locator('.insight-card:not(.inactive) h3')).toHaveCSS(
+      'color',
+      'rgb(255, 255, 255)',
+    );
     await page.screenshot({ path: 'reports/playwright/theme-dua-daily-dark.png' });
   });
 });

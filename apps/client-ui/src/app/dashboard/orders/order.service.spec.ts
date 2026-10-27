@@ -1,4 +1,6 @@
 import { ToastService } from '../../notifications/toast.service';
+import { DuaSpeech } from '../../dua/dua-speech.service';
+import { DuaMilestones } from '../../dua/dua-milestones.service';
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
@@ -498,7 +500,7 @@ describe('OrderService', () => {
         reservedCash: 0,
       });
       expect(filled).toHaveLength(1);
-      expect(TestBed.inject(ToastService).messages()[0].message).toBe('Filled 2 order #1 at $101.50.');
+      expect(TestBed.inject(DuaSpeech).line()?.text).toBe('Filled 2 order #1 at $101.50.');
       http.expectNone('/api/orders');
     });
 
@@ -715,6 +717,28 @@ describe('OrderService', () => {
     let failure: unknown;
     service.submitOrder({ ...BUY, instrumentId: 99 }).subscribe({ error: (error) => (failure = error) });
     expect(failure).toBeInstanceOf(UnknownInstrumentError);
+  });
+
+  it('has Dua celebrate the first order not turned away, once the history is known', () => {
+    const reached = vi.spyOn(TestBed.inject(DuaMilestones), 'reached');
+    const submit = (result: OrderResult) => {
+      service.submitOrder(BUY).subscribe();
+      http.match('/api/instruments').forEach((request) => request.flush([instrument()]));
+      http.expectOne({ method: 'POST', url: '/api/orders' }).flush(result);
+    };
+
+    // Without the history there is no telling whether this is the first.
+    submit(order({ orderId: 1 }));
+    expect(reached).not.toHaveBeenCalled();
+
+    service.loadOrders().subscribe();
+    http.expectOne('/api/orders').flush([order({ orderId: 1, status: 'REJECTED' })]);
+    submit(order({ orderId: 2, status: 'REJECTED' }));
+    expect(reached).not.toHaveBeenCalled();
+    submit(order({ orderId: 3, status: 'ACCEPTED' }));
+    expect(reached).toHaveBeenCalledExactlyOnceWith('trade');
+    submit(order({ orderId: 4 }));
+    expect(reached).toHaveBeenCalledTimes(1);
   });
 
   it('serves the cached history without a request when a refresh is not required', () => {

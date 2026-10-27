@@ -224,3 +224,31 @@ class TestCommandLine:
             seed.parse_arguments(['--database-url', 'postgresql://ignored', '--days', '0'])
 
         assert '--days must be at least 1' in capsys.readouterr().err
+
+
+class TestTheWrite:
+
+    class Cursor:
+        """Records each statement; every RETURNING id is 1."""
+        def __init__(self):
+            self.statements = []
+
+        def execute(self, sql, params=()):
+            self.statements.append((' '.join(sql.split()), params))
+
+        def fetchone(self):
+            return (1,)
+
+    def execution_price(self, action):
+        cursor = self.Cursor()
+        seed.write_order(cursor, action, [11, 12], 0)
+        sql, params = next(s for s in cursor.statements if s[0].startswith('INSERT INTO orders'))
+        assert sql[:sql.index(')')].endswith('execution_price')
+        return params[-1]
+
+    def test_a_filled_order_records_its_execution_price_and_a_rejected_one_does_not(self):
+        actions = [a for trader in seed.TRADERS for a in history(trader)[0] if isinstance(a, OrderAction)]
+        filled = next(a for a in actions if a.status == 'FILLED')
+        rejected = next(a for a in actions if a.status != 'FILLED')
+        assert self.execution_price(filled) == filled.price
+        assert self.execution_price(rejected) is None

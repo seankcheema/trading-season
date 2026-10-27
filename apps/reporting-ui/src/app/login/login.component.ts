@@ -11,6 +11,7 @@ import {
   NO_ACCESS_REASON,
   ReportingAccessError,
 } from '../core/auth/reporting-access';
+import { ThemeToggleComponent } from '../core/theme/theme-toggle.component';
 
 export const LOGIN_ERROR_MESSAGES = {
   network: "Can't reach the server. Check your connection and try again.",
@@ -41,7 +42,7 @@ export function toLoginErrorMessage(error: unknown): string {
 @Component({
   selector: 'app-login',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReactiveFormsModule, NgIcon],
+  imports: [ThemeToggleComponent, ReactiveFormsModule, NgIcon],
   providers: [provideIcons({ lucideMail, lucideLock, lucideEye, lucideEyeOff, lucideLogIn })],
   templateUrl: './login.component.html',
 })

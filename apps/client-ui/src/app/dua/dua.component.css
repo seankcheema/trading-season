@@ -2,8 +2,8 @@
   position: fixed;
   right: max(16px, env(safe-area-inset-right));
   bottom: max(16px, env(safe-area-inset-bottom));
-  width: 52px;
-  height: 52px;
+  width: 72px;
+  height: 72px;
   z-index: 40;
   color: var(--foreground);
   font-size: 13px;
@@ -20,8 +20,8 @@ button {
 .dua-launcher {
   position: relative;
   display: block;
-  width: 52px;
-  height: 52px;
+  width: 72px;
+  height: 72px;
   padding: 0;
   border: 0;
   border-radius: 50%;
@@ -38,7 +38,7 @@ button {
   height: 100%;
   overflow: hidden;
   border-radius: inherit;
-  background: #eefaff;
+  background: var(--dua-face);
 }
 .launcher-art {
   position: relative;
@@ -53,71 +53,34 @@ button {
 .launcher-art.face-visible {
   transform: translateY(-10px) scale(1.35);
 }
-.launcher-body,
-.launcher-fin {
+.launcher-art app-dua-figure {
   position: absolute;
   inset: 0;
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-/* The fin is its own layer so it can wiggle about its base, where it meets the head. */
-.launcher-fin {
-  transform-origin: 52.7% 50.4%;
-}
-.dua-launcher:hover .launcher-fin {
-  animation: fin-wiggle 600ms ease-in-out;
-}
-@keyframes fin-wiggle {
-  0%,
-  100% {
-    transform: rotate(0deg);
-  }
-  20% {
-    transform: rotate(5deg);
-  }
-  45% {
-    transform: rotate(-4deg);
-  }
-  70% {
-    transform: rotate(3deg);
-  }
-  85% {
-    transform: rotate(-1.5deg);
-  }
 }
 .notification-count {
   position: absolute;
-  top: 6px;
-  right: -2px;
+  top: 2px;
+  right: -5px;
   z-index: 1;
-  min-width: 17px;
-  height: 17px;
-  padding: 0 4px;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 6px;
+  box-sizing: border-box;
   border-radius: 999px;
   background: #b83c47;
   color: #fff;
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 17px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 24px;
   text-align: center;
   pointer-events: none;
-}
-.fallback {
-  display: grid;
-  height: 100%;
-  place-items: center;
-  color: #0e0e0e;
-  font-size: 12px;
-  font-weight: 600;
 }
 .dua-panel {
   position: absolute;
   right: 0;
-  bottom: 64px;
-  width: min(360px, calc(100vw - 32px));
-  max-height: min(560px, calc(100dvh - 96px - env(safe-area-inset-bottom)));
+  bottom: 84px;
+  width: min(460px, calc(100vw - 32px));
+  max-height: min(700px, calc(100dvh - 116px - env(safe-area-inset-bottom)));
   display: flex;
   flex-direction: column;
   border: 1px solid var(--border);
@@ -156,10 +119,9 @@ button {
   flex-shrink: 0;
   overflow: hidden;
   border-radius: 50%;
-  background: #eefaff;
-  color: #0e0e0e;
+  background: var(--dua-face);
 }
-.dua-avatar img {
+.dua-avatar app-dua-figure {
   width: 100%;
   height: 100%;
 }
@@ -179,7 +141,9 @@ h2 {
   gap: 8px;
   font-size: 18px;
 }
-.plan-label {
+.market-note {
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: 12px;
   font-weight: 400;
   color: var(--muted-foreground);
@@ -216,6 +180,7 @@ p {
   font-size: 14px;
   line-height: 1.45;
 }
+
 .choices {
   display: grid;
   gap: 8px;
@@ -421,7 +386,7 @@ article h3 {
   letter-spacing: 0;
 }
 .primary-metric .compact-value {
-  font-size: 36px;
+  font-size: 20px;
 }
 .insight-sparkline {
   display: block;
@@ -490,9 +455,6 @@ article h3 {
   .launcher-art,
   .choices button {
     transition: none;
-  }
-  .dua-launcher:hover .launcher-fin {
-    animation: none;
   }
 }
 
@@ -579,10 +541,21 @@ article h3 {
 .header-title h2 {
   flex: 0 1 auto;
 }
-.header-timestamp {
-  font-size: 9px;
+.header-title.with-account {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+}
+.header-title.with-account h2 {
+  max-width: 100%;
+}
+.header-account {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
   line-height: 1.3;
-  max-width: 90px;
 }
 .explain-action {
   margin-top: 12px;
@@ -615,7 +588,7 @@ article h3 {
   gap: 4px;
 }
 .daily-metrics dd {
-  font-size: 54px;
+  font-size: 20px;
 }
 .daily-metrics dd ng-icon {
   font-size: 28px;
@@ -633,18 +606,6 @@ article h3 {
   align-self: flex-start;
   margin-top: auto;
   padding-top: 16px;
-}
-.stock-list {
-  list-style: none;
-  padding: 0;
-  margin: 8px 0 0;
-  font-size: 11px;
-}
-.stock-list li {
-  display: flex;
-  justify-content: space-between;
-  gap: 6px;
-  padding: 1px 0;
 }
 .insight-card .takeaway {
   margin-bottom: 8px;
@@ -666,49 +627,31 @@ article h3 {
 .explain-action {
   flex-shrink: 0;
 }
-.stock-list {
-  max-height: 96px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
-  line-height: 1.4;
-  font-variant-numeric: tabular-nums;
-}
-.stock-list .gain {
-  color: var(--color-gain, #25eb69);
-}
-.stock-list .loss {
-  color: var(--color-loss, #ff3d5a);
-}
-.stock-list:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: -2px;
-}
 
-.dua-panel:has(.insight-card, .insight-explanation) {
+.dua-panel:has(.insight-card) {
   overflow: hidden;
   background:
     linear-gradient(to bottom, transparent 48%, var(--dua-edge) 100%),
     radial-gradient(ellipse at 25% 0%, var(--dua-cyan), transparent 70%),
     radial-gradient(ellipse at 0% 45%, var(--dua-purple), transparent 75%), var(--dua-base);
 }
-.dua-body:has(.insight-card, .insight-explanation) {
+.dua-body:has(.insight-card) {
   padding: 0;
 }
-.dua-body:has(.insight-card, .insight-explanation) .insight-card {
+.dua-body:has(.insight-card) .insight-card {
   background: transparent;
   border: 0;
   border-radius: 0;
 }
-.dua-body:has(.insight-card, .insight-explanation) .card-navigation {
+.dua-body:has(.insight-card) .card-navigation {
   margin: 0 10px 10px;
 }
-.dua-body:has(.insight-card, .insight-explanation) > .timestamp,
-.dua-body:has(.insight-card, .insight-explanation) .feedback {
+.dua-body:has(.insight-card) > .timestamp,
+.dua-body:has(.insight-card) .feedback {
   margin: 8px 18px;
 }
 
-.dua-panel:has(.insight-card, .insight-explanation) .dua-header {
+.dua-panel:has(.insight-card) .dua-header {
   background: var(--dua-edge);
 }
 
@@ -752,30 +695,12 @@ article h3 {
 }
 .primary-metric dd ng-icon,
 .daily-metrics dd ng-icon {
-  font-size: 36px;
-}
-.today-metrics {
-  grid-template-columns: minmax(0, 1.8fr) minmax(0, 1fr);
-  align-items: center;
-  gap: 10px;
-}
-.today-metrics .primary-metric {
-  grid-column: auto;
-}
-.today-metrics .primary-metric dd {
-  font-size: clamp(36px, 11vw, 48px);
-  font-weight: 600;
-}
-.today-metrics .primary-metric strong {
-  font-weight: 600;
-}
-.today-metrics > div:not(.primary-metric) dd {
-  font-size: 22px;
+  font-size: 20px;
 }
 
 .overview-metrics .primary-metric dd ng-icon,
 .overview-metrics.daily-metrics dd ng-icon {
-  font-size: 36px;
+  font-size: 20px;
 }
 
 .card-meta {
@@ -796,9 +721,9 @@ article h3 {
 .card-heading .explain-action {
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
+  width: auto;
+  min-height: 28px;
+  border-radius: 6px;
   text-decoration: none;
 }
 .card-heading .explain-action ng-icon {
@@ -826,7 +751,7 @@ article h3 {
 .insight-card .overview-metrics dd {
   order: 0;
 }
-.dua-body:has(.insight-card, .insight-explanation) .card-navigation {
+.dua-body:has(.insight-card) .card-navigation {
   margin-top: 0;
   margin-bottom: 6px;
 }
@@ -844,13 +769,13 @@ article h3 {
   font-size: clamp(46px, 12vw, 64px);
 }
 .insight-card .overview-metrics.daily-metrics dd {
-  font-size: 54px;
+  font-size: 20px;
 }
 .insight-card .overview-metrics .compact-value {
   font-size: 18px;
 }
 .insight-card .overview-metrics .primary-metric .compact-value {
-  font-size: 36px;
+  font-size: 20px;
 }
 .insight-card .overview-metrics strong {
   font-weight: 600;
@@ -860,45 +785,6 @@ article h3 {
   margin-top: 14px;
 }
 
-.insight-explanation {
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
-  height: auto;
-  max-height: min(440px, calc(100dvh - 200px));
-  margin: 0;
-  padding: 12px 18px 36px;
-  border: 0;
-  color: var(--dua-heading);
-  font-size: 14px;
-  line-height: 1.55;
-}
-.insight-explanation:first-child {
-  padding-top: 12px;
-}
-.insight-explanation h3,
-.insight-explanation h4 {
-  font-size: inherit;
-  line-height: inherit;
-  font-weight: 600;
-  text-transform: none;
-  letter-spacing: normal;
-}
-.insight-explanation h3 {
-  margin: 0 0 12px;
-  flex-shrink: 0;
-}
-.insight-explanation h4 {
-  margin: 16px 0 6px;
-}
-.insight-explanation .takeaway {
-  font-size: inherit;
-  line-height: inherit;
-  margin: 0 0 12px;
-}
-.insight-explanation .takeaway strong {
-  font-weight: 600;
-}
 .explanation-reason,
 .example-context {
   font-size: inherit;
@@ -916,7 +802,7 @@ article h3 {
   grid-area: 1 / 1;
   height: auto;
   align-self: stretch;
-  max-height: min(440px, calc(100dvh - 200px));
+  max-height: min(480px, calc(100dvh - 200px));
 }
 .insight-card.inactive {
   visibility: hidden;
@@ -925,8 +811,7 @@ article h3 {
 .insights > .feedback {
   grid-area: 2 / 1;
 }
-.insight-card .card-content,
-.insight-explanation .card-content {
+.insight-card .card-content {
   flex: 0 1 auto;
 }
 .insight-card .takeaway {
@@ -953,8 +838,7 @@ article h3 {
     transform 380ms cubic-bezier(0.4, 0, 0.2, 1),
     visibility 0s 380ms;
 }
-.insights,
-.insight-explanation {
+.insights {
   animation: dua-content-enter 280ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 @keyframes dua-content-enter {
@@ -980,8 +864,7 @@ article h3 {
     transition: none;
     transform: none;
   }
-  .insights,
-  .insight-explanation {
+  .insights {
     animation: none;
   }
 }
@@ -999,6 +882,332 @@ article h3 {
 
 /* While the panel animates between sizes its content is briefly taller than the panel, so
    scrolling is off until the new size is reached rather than flashing a scrollbar. */
-.dua-panel.resizing :is(.dua-body, .card-content, .stock-list) {
+.dua-panel.resizing :is(.dua-body, .card-content) {
   overflow: hidden;
+}
+
+/* Constrain intrinsic grid sizing as well as the outer panel. */
+.dua-panel {
+  width: min(460px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+}
+.dua-body,
+.choices,
+.choices button,
+.choice-copy,
+.card-content {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.choices {
+  grid-template-columns: minmax(0, 1fr);
+}
+.choice-copy small {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.card-content {
+  overflow-wrap: anywhere;
+}
+.explain-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: auto;
+  white-space: nowrap;
+  font-size: 10px;
+}
+.guidance-headline {
+  font-size: 23px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--dua-heading);
+}
+/* A card's one short statement, such as how much the stock is swinging, is set larger. */
+.guidance-headline.prominent {
+  font-size: 28px;
+}
+.guidance-description {
+  margin: 10px 0;
+  font-size: 13px;
+  color: var(--dua-copy);
+}
+.insight-card .overview-metrics dd,
+.insight-card .overview-metrics .primary-metric dd {
+  font-size: 24px;
+}
+.update-action {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 5px 10px;
+  background: var(--card);
+}
+.simulation-notice {
+  padding: 8px 18px;
+}
+.new-label {
+  font-size: 10px;
+  color: var(--dua-notification-blue);
+  margin-left: 5px;
+}
+@property --dua-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+.choices button.unread {
+  border: 1px solid transparent;
+  background:
+    linear-gradient(var(--card), var(--card)) padding-box,
+    conic-gradient(
+        from var(--dua-angle),
+        var(--border) 45%,
+        var(--dua-notification-blue),
+        var(--border) 85%
+      )
+      border-box;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--dua-notification-blue) 25%, transparent);
+  animation: dua-unread 3s linear infinite;
+}
+@keyframes dua-unread {
+  to {
+    --dua-angle: 360deg;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .choices button.unread {
+    animation: none;
+    border-color: var(--dua-notification-blue);
+  }
+}
+
+/* Keep each currency amount and its direction icon together. */
+.insight-card .overview-metrics dd,
+.insight-card .overview-metrics.daily-metrics dd,
+.insight-card .overview-metrics .primary-metric dd {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+.overview-metrics dd strong {
+  white-space: nowrap;
+  overflow-wrap: normal;
+  flex: 0 0 auto;
+  letter-spacing: -0.03em;
+}
+.insight-card .overview-metrics dd ng-icon {
+  flex: 0 0 auto;
+  font-size: 20px;
+}
+.overview-metrics .wide-metric {
+  grid-column: 1 / -1;
+}
+.card-heading {
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+.card-heading h3 {
+  flex: 1 1 100px;
+  overflow-wrap: anywhere;
+}
+.card-heading .explain-action {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  height: auto;
+  min-height: 32px;
+  padding: 4px 6px;
+  gap: 4px;
+  border-radius: 6px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.card-heading .explain-action {
+  min-width: 32px;
+  padding: 4px;
+}
+@media (max-width: 380px) {
+  .overview-metrics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.insight-card > .card-meta {
+  flex-shrink: 0;
+  margin: 4px 0 10px;
+}
+
+/* Metrics-first cards: the amount leads and the statement explains it. */
+.insight-card .overview-metrics .primary-metric dd {
+  font-size: 36px;
+  line-height: 1.15;
+}
+.insight-card .overview-metrics .primary-metric dd ng-icon {
+  font-size: 28px;
+}
+.insight-card .overview-metrics .primary-metric .compact-value {
+  font-size: 26px;
+}
+.guidance-statement {
+  margin-top: 12px;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--dua-heading);
+}
+.guidance-description.prominent {
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--dua-heading);
+}
+.guidance-advice {
+  margin-top: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--dua-copy);
+}
+.movers {
+  margin-top: 4px;
+}
+.movers + .movers {
+  margin-top: 16px;
+}
+.movers-heading {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--dua-heading);
+}
+.movers-groups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.insight-card .movers-label {
+  margin: 0 0 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--dua-copy);
+}
+.movers-group ul {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.movers-group li {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.movers-group .ticker-link {
+  font-size: 15px;
+  font-weight: 500;
+}
+.movers-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  font-size: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+  color: var(--dua-heading);
+}
+.movers-value ng-icon {
+  font-size: 18px;
+}
+.movers-value ng-icon.gain {
+  color: var(--dua-gain);
+}
+.movers-value ng-icon.loss {
+  color: var(--dua-loss);
+}
+.insight-card .movers-empty {
+  font-size: 13px;
+  color: var(--dua-copy);
+}
+.retry-action {
+  grid-area: 3 / 1;
+  justify-self: start;
+  margin: 0 18px 8px;
+}
+
+/* Where the volatility estimate sits between smaller and bigger swings. The track box is as
+   tall as the marker and inset by half its width, so nothing overhangs and the card never scrolls. */
+.swing-meter {
+  margin-top: 14px;
+}
+.swing-meter-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  font-size: 11px;
+  color: var(--dua-copy);
+}
+.swing-meter-track {
+  position: relative;
+  height: 14px;
+  margin: 0 7px;
+}
+.swing-meter-track::before {
+  content: '';
+  position: absolute;
+  top: 4px;
+  right: 0;
+  left: 0;
+  height: 6px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--dua-heading) 18%, transparent);
+}
+.swing-meter-mid {
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  left: 50%;
+  width: 1px;
+  background: var(--dua-copy);
+}
+.swing-meter-marker {
+  position: absolute;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+  border: 2px solid var(--dua-base);
+  border-radius: 50%;
+  background: var(--dua-heading);
+  transform: translate(-50%, -50%);
+}
+
+/* Beside the order dialog Dua keeps its compact size, so it never covers the dialog's buttons. */
+:host(.raised) .dua-panel {
+  width: min(360px, calc(100vw - 32px));
+  max-height: min(560px, calc(100dvh - 116px - env(safe-area-inset-bottom)));
+}
+
+/*
+ * Price-swing phrases in the analysis cards stand out bold and underlined, in the text's own
+ * colour, never in direction's red or green.
+ */
+.swing-word {
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.guidance-headline .swing-word {
+  font-weight: 800;
 }

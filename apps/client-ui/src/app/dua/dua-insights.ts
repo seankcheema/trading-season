@@ -2,7 +2,7 @@ import { AccountHolding } from '../dashboard/accounts/account.models';
 import { CandlePointDto } from '../dashboard/market-data.service';
 import { Instrument } from '../dashboard/mock-data';
 
-export type DuaChoice = 'daily' | 'holdings' | 'stock';
+export type DuaChoice = 'daily' | 'holdings' | 'stock' | 'outlook' | 'trending';
 export interface DuaCard {
   symbol?: string;
   symbols?: string[];
@@ -25,6 +25,98 @@ export interface DuaCard {
   note?: string;
   text: string;
   detail?: string;
+  /** Leads with the metrics, so the takeaway reads as a statement about them. */
+  metricsFirst?: boolean;
+  /** Gives the description the same weight as the takeaway. */
+  emphasizeText?: boolean;
+  /** Sets a short takeaway larger, as the card's one statement. */
+  emphasizeTakeaway?: boolean;
+  /** The figures behind the takeaway, kept out of it and shown from an info button beside it. */
+  aside?: { label: string; text: string };
+  /** What the user could do about the takeaway, shown after the description. */
+  advice?: string;
+  /** A position on a two-ended scale, `value` from 0 (left) to 1 (right). */
+  meter?: { value: number; left: string; right: string; label: string };
+  /** Marks a card whose call comes from a model forecast, with that forecast's record. */
+  forecast?: { record?: ForecastRecord };
+  /** A phrase of the takeaway to colour: price swings more or less than usual. */
+  highlight?: { text: string; tone: 'more' | 'less' };
+  /** Ranked gainers and losers, optionally one section per period. */
+  movers?: {
+    heading?: string;
+    groups: {
+      label: string;
+      tone: 'gain' | 'loss';
+      rows: { symbol: string; value: string }[];
+      empty: string;
+    }[];
+  }[];
+}
+
+/**
+ * A forecast's record over closed weeks, as forecast cards show it: a
+ * frequency with one denominator ("right 15 of last 20 calls") and how often it made a call when
+ * it can decline to.
+ */
+export interface ForecastRecord {
+  hits: number;
+  total: number;
+  unit: 'calls' | 'weeks';
+  /** The hit rate as a whole percentage, shown as the forecast's confidence score. */
+  percent: number;
+  /** Whether the forecast is making a call now; a confidence score reads oddly on "no call". */
+  called: boolean;
+  coverage?: string;
+}
+
+/** The strong-trend read's record on a stock. Undefined before any call has closed. */
+export function trendForecastRecord(reading: {
+  call: 'up' | 'down' | null;
+  signalHits: number;
+  signalCalls: number;
+  signalWeeks: number;
+}): ForecastRecord | undefined {
+  if (!reading.signalCalls) {
+    return undefined;
+  }
+  return {
+    hits: reading.signalHits,
+    total: reading.signalCalls,
+    unit: 'calls',
+    percent: Math.round((reading.signalHits / reading.signalCalls) * 100),
+    called: reading.call !== null,
+    coverage: `Called ${reading.signalCalls} of the last ${reading.signalWeeks} weeks; it makes no call on weeks too weak to read.`,
+  };
+}
+
+/**
+ * The volatility outlook's record: the leading reader's hits over its last closed weeks.
+ * Undefined before any week has closed.
+ */
+export function outlookForecastRecord(reading: {
+  source: 'model' | 'rule';
+  modelHits: number;
+  modelDays: number;
+  ruleHits: number;
+  ruleDays: number;
+}): ForecastRecord | undefined {
+  const model = reading.source === 'model';
+  const total = model ? reading.modelDays : reading.ruleDays;
+  if (!total) {
+    return undefined;
+  }
+  const hits = model ? reading.modelHits : reading.ruleHits;
+  return { hits, total, unit: 'weeks', percent: Math.round((hits / total) * 100), called: true };
+}
+
+/** The takeaway split around its highlighted phrase, or null when it has none to colour. */
+export function highlightParts(card: DuaCard): [string, string, string] | null {
+  const text = card.highlight?.text;
+  const at = text && card.takeaway ? card.takeaway.indexOf(text) : -1;
+  if (!text || at < 0) {
+    return null;
+  }
+  return [card.takeaway!.slice(0, at), text, card.takeaway!.slice(at + text.length)];
 }
 
 export function sparklinePoints(values: readonly number[]): string {
@@ -339,6 +431,78 @@ export function dailyReview(
   ];
 }
 
+/**
+ * Watchlist movement since the session open. `symbols` is null while the watchlist is not
+ * loaded. The watchlist belongs to the user, so it is the same for every trading account.
+ */
+export function watchlistPulse(
+  symbols: readonly string[] | null,
+  quotes: readonly Instrument[],
+): DuaCard {
+  const title = 'Your watchlist since the open';
+  const detail =
+    "Percent change from each watchlist stock's session open to its latest price. Your watchlist is shared by all of your trading accounts.";
+  if (symbols === null) {
+    return {
+      title,
+      takeaway: 'Your watchlist is unavailable.',
+      text: 'Try again shortly.',
+      detail,
+    };
+  }
+  if (!symbols.length) {
+    return {
+      title,
+      takeaway: 'Your watchlist is empty.',
+      text: 'Star a stock to follow it here.',
+      detail,
+    };
+  }
+  const moves = symbols.flatMap((symbol) => {
+    const quote = quotes.find((q) => q.symbol === symbol);
+    const change = quote ? percentChange(quote.price, quote.price - quote.change) : null;
+    return change === null ? [] : [{ symbol, change }];
+  });
+  const rising = moves
+    .filter((m) => m.change > 0)
+    .sort((a, b) => b.change - a.change || a.symbol.localeCompare(b.symbol));
+  const falling = moves
+    .filter((m) => m.change < 0)
+    .sort((a, b) => a.change - b.change || a.symbol.localeCompare(b.symbol));
+  const average = moves.reduce((sum, m) => sum + m.change, 0) / (moves.length || 1);
+  return {
+    title,
+    metrics: moves.length
+      ? [
+          { label: 'Rising', value: String(rising.length), tone: 'gain' },
+          { label: 'Falling', value: String(falling.length), tone: 'loss' },
+        ]
+      : [],
+    takeaway: watchlistTakeaway(moves.length, rising.length, falling.length),
+    text: !moves.length
+      ? ''
+      : `On average, your watchlist stocks moved ${signedPercent(average)} since the open.${
+          moves.length < symbols.length ? ` ${moves.length} of ${symbols.length} have prices.` : ''
+        }`,
+    detail,
+  };
+}
+
+function watchlistTakeaway(priced: number, rising: number, falling: number): string {
+  if (!priced) {
+    return 'Watchlist prices are unavailable.';
+  }
+  if (rising > falling) {
+    return 'Most of your watchlist is rising.';
+  }
+  if (falling > rising) {
+    return 'Most of your watchlist is falling.';
+  }
+  return rising
+    ? 'Your watchlist is evenly split between rising and falling stocks.'
+    : 'Your watchlist is unchanged since the open.';
+}
+
 export function stockCards(
   symbol: string,
   holdings: readonly AccountHolding[],
@@ -519,6 +683,30 @@ export function stockPreviewCards(): DuaCard[] {
 
 export const DUA_EXPLANATIONS: Record<DuaChoice, readonly { term: string; description: string }[]> =
   {
+    trending: [
+      {
+        term: 'Where this read comes from',
+        description:
+          'A machine-learning model scores every stock daily on whether its price is likely to be higher in five trading days, and is refit every month on the weeks that have closed. It is shown beside the momentum pattern "the next days continue the last ten"; whichever has the better record on the stock over the last twenty closed weeks leads. Accuracy counts only weeks that have already closed.',
+      },
+      {
+        term: 'What it is not',
+        description:
+          'A read on a simulated market, not a prediction of any real market. It can be wrong, must not be taken as true, and is not investment advice or a recommendation to trade in any real account.',
+      },
+    ],
+    outlook: [
+      {
+        term: 'Where this read comes from',
+        description:
+          'The Trading Season model is trained on this market and scores every stock daily. The card shows its read when its track record on the stock beats the simple pattern "next week like last week"; otherwise the pattern leads and the model sits beside it. Accuracy counts only weeks that have already closed.',
+      },
+      {
+        term: 'What it does not say',
+        description:
+          'How much the price may move over the next five trading days, up or down. It says nothing about direction and is never a recommendation to buy or sell. Simulated market.',
+      },
+    ],
     daily: [
       {
         term: 'Illustrative daily review',
@@ -618,5 +806,154 @@ export function directionCard(
         : 'Recent closes do not show a consistent rise or fall.',
     text: `${symbol} ${rising ? 'rose' : falling ? 'fell' : 'had mixed movement'} across the last 5 completed candles.`,
     detail: `${time(new Date(Date.parse(completed[0].timestamp) + 60_000).toISOString())} to ${time(new Date(Date.parse(completed[4].timestamp) + 60_000).toISOString())}: ${change >= 0 ? '+' : ''}${change.toFixed(1)}% from first close to last.`,
+  };
+}
+
+/** The week-ahead volatility card from a ready Outlook reading, in the same words as the market page's card. */
+/** The trend signal for one stock and the reads across the platform, for the What's trending choice. */
+export function trendingCards(
+  symbol: string,
+  reading: {
+    call: 'up' | 'down' | null;
+    probability: number;
+    signalHits: number;
+    signalCalls: number;
+    signalWeeks: number;
+  },
+  overview: readonly {
+    symbol: string;
+    call: 'up' | 'down' | null;
+    momentum: number;
+    hits: number;
+    calls: number;
+    weeks: number;
+  }[],
+  horizon = 5,
+  signalDays = 5,
+): DuaCard[] {
+  const call = reading.call;
+  const pct = (value: number) => `${(Math.expm1(value) * 100).toFixed(1)}%`;
+  const signed = (value: number) => `${value > 0 ? '+' : ''}${pct(value)}`;
+  const record = (hits: number, calls: number, weeks: number) =>
+    calls
+      ? `right ${Math.round((hits / calls) * 100)}% of its last ${calls} calls, made on ${calls} of ${weeks} weeks`
+      : 'no record yet';
+  const notice =
+    'Machine-learning read on a simulated market. It can be wrong: do not take it as true or as advice to buy or sell.';
+  const rising = overview.filter((row) => row.call === 'up');
+  const falling = overview.filter((row) => row.call === 'down').reverse();
+  const unclear = overview.filter((row) => row.call === null);
+  const advice =
+    call === null ? 'no clear direction' : `consider ${call === 'up' ? 'buying' : 'selling'}`;
+  const line = (row: (typeof overview)[number]) => ({
+    symbol: row.symbol,
+    change: `${signed(row.momentum)} · ${record(row.hits, row.calls, row.weeks)}`,
+  });
+  return [
+    {
+      symbol,
+      title: 'Trade signal',
+      period: `Next ${horizon} trading days`,
+      text: `${symbol}: ${advice} over the next ${horizon} trading days.`,
+      takeaway:
+        call === null
+          ? `${symbol}: no clear direction. Its move over the last ${signalDays} days is too small against its usual swings to call.`
+          : `${symbol}: ${advice}. It moved ${call} over the last ${signalDays} days by more than its usual swings.`,
+      purpose: `The strong-trend read calls only when a stock's recent move stands out from its usual swings, and says so when it does not. On ${symbol} it has been ${record(reading.signalHits, reading.signalCalls, reading.signalWeeks)}.`,
+      metrics: [
+        {
+          label: 'Model estimate',
+          value: `${Math.round(reading.probability * 100)}% chance the price is higher`,
+          tone: reading.probability > 0.5 ? 'gain' : 'loss',
+          primary: true,
+        },
+        {
+          label: reading.signalCalls ? `Last ${reading.signalCalls} calls` : 'Record',
+          value: reading.signalCalls
+            ? `${Math.round((reading.signalHits / reading.signalCalls) * 100)}% (${reading.signalHits} of ${reading.signalCalls})`
+            : 'No closed calls yet',
+        },
+        {
+          label: 'Weeks called',
+          value: reading.signalWeeks
+            ? `${reading.signalCalls} of the last ${reading.signalWeeks}`
+            : 'None closed yet',
+        },
+      ],
+      note: notice,
+    },
+    {
+      symbols: overview.map((row) => row.symbol),
+      title: "What's trending",
+      period: `Next ${horizon} trading days`,
+      text: `${rising.length} of ${overview.length} stocks read higher over the next ${horizon} trading days, ${falling.length} lower, ${unclear.length} with no clear direction.`,
+      takeaway: `${rising.length} of ${overview.length} stocks read higher, ${falling.length} lower, ${unclear.length} with no clear direction. Strongest moves first.`,
+      purpose:
+        "Each line is that stock's strong-trend read, with how often its calls on the stock were right and how many weeks it called.",
+      metrics: [
+        {
+          label: 'Reading higher',
+          value: rising.length ? `${rising.length} stocks` : 'None',
+          tone: 'gain',
+          stocks: rising.map(line),
+        },
+        {
+          label: 'Reading lower',
+          value: falling.length ? `${falling.length} stocks` : 'None',
+          tone: 'loss',
+          stocks: falling.map(line),
+        },
+        {
+          label: 'No clear direction',
+          value: unclear.length ? `${unclear.length} stocks` : 'None',
+          stocks: unclear.map(line),
+        },
+      ],
+      note: notice,
+    },
+  ];
+}
+
+export function outlookCard(
+  symbol: string,
+  reading: {
+    call: 'stormier' | 'calmer';
+    source: 'model' | 'rule';
+    probability: number;
+    usualVolatility: number;
+    recentVolatility: number;
+    modelHits: number;
+    modelDays: number;
+    ruleHits: number;
+    ruleDays: number;
+  },
+): DuaCard {
+  const bigger = reading.call === 'stormier';
+  const hits = reading.source === 'model' ? reading.modelHits : reading.ruleHits;
+  const days = reading.source === 'model' ? reading.modelDays : reading.ruleDays;
+  const pct = (value: number) => `${(value * 100).toFixed(1)}%`;
+  return {
+    symbol,
+    title: 'Volatility outlook',
+    period: 'Next 5 trading days',
+    text: `${symbol}: ${bigger ? 'bigger' : 'smaller'} price swings likely over the next 5 trading days, up or down.`,
+    takeaway: `${symbol}: ${bigger ? 'bigger' : 'smaller'} price swings likely. Up or down: how far the price may move, not which way.`,
+    purpose: `${reading.source === 'model' ? 'The Trading Season model' : 'The recent pattern'} leads on ${symbol} because its recent record there is the better one: right ${days ? Math.round((hits / days) * 100) : 0}% of the last ${days} closed weeks.`,
+    metrics: [
+      {
+        label: 'Model estimate',
+        value: `${Math.round(reading.probability * 100)}% chance of bigger swings`,
+        tone: bigger ? 'loss' : 'gain',
+        primary: true,
+      },
+      {
+        label: days ? `Last ${days} weeks` : 'Record',
+        value: days
+          ? `${Math.round((hits / days) * 100)}% (${hits} of ${days})`
+          : 'No closed weeks yet',
+      },
+      { label: 'Usual daily move', value: pct(reading.usualVolatility) },
+      { label: 'Last 5 days', value: pct(reading.recentVolatility) },
+    ],
   };
 }

@@ -29,7 +29,7 @@ public class TermsAcceptance extends TermsAcceptanceBase {
      * Trade Service and {@code TERMS_VERSION} in the client; change all three
      * together whenever the wording of the terms changes.
      */
-    public static final String CURRENT_VERSION = "2026-10-12";
+    public static final String CURRENT_VERSION = "2026-10-21";
 
     /**
      * Required by Hibernate.

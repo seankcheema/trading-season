@@ -157,7 +157,7 @@ test('export downloads the filtered statement as CSV and as a PDF', async ({ pag
   const dua = page.getByRole('region', { name: 'Dua insights' });
   await launcher.click();
   await dua.getByRole('button', { name: 'Daily Review', exact: true }).click();
-  await expect(dua).toContainText('Market overview');
+  await expect(dua).toContainText('Your performance');
   await page.getByTestId('open-transactions').click();
   await expect(dua).toBeHidden();
   const dialog = page.getByRole('dialog', { name: 'Recent Transactions' });
@@ -201,7 +201,7 @@ test('export downloads the filtered statement as CSV and as a PDF', async ({ pag
   await expect(dialog).toBeHidden();
   await launcher.click();
   await expect(dua.getByRole('heading', { name: 'Daily Review', exact: true })).toBeVisible();
-  await expect(dua).toContainText('Market overview');
+  await expect(dua).toContainText('Your performance');
 });
 
 async function readDownload(download: Download): Promise<string> {
@@ -232,7 +232,10 @@ test('an order row expands into its audit timeline from pending to its final sta
   await expect(entries.nth(2)).toContainText('FILLED');
   for (let stage = 0; stage < 3; stage++) {
     await expect(entries.nth(stage)).toContainText('$200.00');
-    await expect(entries.nth(stage).locator('time')).toHaveAttribute('datetime', /^2026-01-05T14:31/);
+    await expect(entries.nth(stage).locator('time')).toHaveAttribute(
+      'datetime',
+      /^2026-01-05T14:31/,
+    );
   }
 
   await order.click();

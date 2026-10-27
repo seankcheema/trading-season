@@ -45,6 +45,8 @@ export class TokenStorageService {
   }
 
   readonly hasSession = computed(() => this._session() !== null);
+  // The signed-in user's id (the token's sub), for keeping per-user state in this browser.
+  readonly userId = computed(() => this.subject(this._session()?.accessToken ?? null));
 
   get accessToken(): string | null {
     return this._session()?.accessToken ?? null;

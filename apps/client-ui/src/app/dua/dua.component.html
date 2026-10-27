@@ -7,192 +7,294 @@
   role="region"
   aria-label="Dua insights"
   tabindex="-1"
-  (keydown.escape)="minimize()"
+  (keydown.escape)="$event.stopPropagation(); minimize()"
 >
   <header class="dua-header">
     @if (choice()) {
       <button
         class="icon-button"
         type="button"
-        [attr.aria-label]="explaining() ? 'Back to results' : 'Back to choices'"
+        aria-label="Back to choices"
         (click)="backToPrevious()"
       >
         <ng-icon name="lucideChevronLeft" aria-hidden="true" />
       </button>
     } @else {
       <span class="dua-avatar" aria-hidden="true">
-        @if (!imagesFailed()) {
-          <img
-            src="/assets/assistant/shark-launcher-light-512.png"
-            alt=""
-            (error)="imageFailed()"
-          />
-        } @else {
-          D
-        }
+        <app-dua-figure />
       </span>
     }
-    <div class="header-title">
+    <div class="header-title" [class.with-account]="choice() && snapshotContext()">
       <h2 [class.dua-title]="!choice()">
         {{ title() }}
-        @if (!choice()) {
-          <span class="plan-label">Free Plan</span>
+        @if (!choice() && marketNote()) {
+          <span class="market-note">{{ marketNote() }}</span>
         }
       </h2>
-      @if (choice() && asOf()) {
-        <small class="header-timestamp">{{ asOf() }}</small>
+      @if (choice() && snapshotContext()) {
+        <small class="header-account">Account: {{ snapshotContext() }}</small>
       }
     </div>
-    @if (choice() && !explaining()) {
-      <button
-        class="icon-button"
-        type="button"
-        [attr.aria-label]="message() ? 'Retry' : 'Refresh'"
-        [title]="message() ? 'Retry' : 'Refresh'"
-        [disabled]="loading()"
-        (click)="select(choice()!)"
-      >
-        <ng-icon name="lucideRefreshCw" aria-hidden="true" />
-      </button>
-    }
     <button class="icon-button" type="button" aria-label="Minimize Dua" (click)="minimize()">
       <ng-icon name="lucideX" aria-hidden="true" />
     </button>
   </header>
   <div class="dua-body">
     @if (!choice()) {
-      <p class="greeting">What would you like to review?</p>
+      <p class="greeting">{{ greeting() }}</p>
+      @if (historyLoading()) {
+        <span class="visually-hidden" role="status">Fetching insight history</span>
+      }
       <div class="choices">
-        <button type="button" aria-label="Daily Review" (click)="select('daily')">
-          <span class="choice-icon"><ng-icon name="lucideNewspaper" aria-hidden="true" /></span>
-          <span class="choice-copy"
-            ><span class="choice-title">Daily Review</span
-            ><small>Market highlights</small></span
-          >
-          <ng-icon class="choice-chevron" name="lucideChevronRight" aria-hidden="true" />
-        </button>
-        <button type="button" aria-label="My Holdings" (click)="select('holdings')">
-          <span class="choice-icon"><ng-icon name="lucideChartPie" aria-hidden="true" /></span>
-          <span class="choice-copy"
-            ><span class="choice-title">My Holdings</span
-            ><small>Portfolio highlights</small></span
-          >
-          <ng-icon class="choice-chevron" name="lucideChevronRight" aria-hidden="true" />
-        </button>
-        @if (symbol()) {
-          <button type="button" aria-label="This Stock" (click)="select('stock')">
-            <span class="choice-icon"><ng-icon name="lucideScanSearch" aria-hidden="true" /></span>
-            <span class="choice-copy"
-              ><span class="choice-title">This Stock</span
-              ><small>Growth and risk (demo)</small></span
+        @for (item of ['stock', 'daily', 'holdings']; track item) {
+          @if (item !== 'stock' || symbol()) {
+            <button
+              type="button"
+              [class.unread]="isUnread(item)"
+              [attr.aria-label]="
+                item === 'stock'
+                  ? 'This Stock'
+                  : item === 'daily'
+                    ? 'Daily Review'
+                    : 'Portfolio Analysis'
+              "
+              [attr.aria-description]="
+                item === 'stock' && forecastReady() ? 'Includes a model forecast' : null
+              "
+              [disabled]="historyLoading()"
+              (click)="select($any(item))"
             >
-            <ng-icon class="choice-chevron" name="lucideChevronRight" aria-hidden="true" />
-          </button>
+              <span class="choice-icon"
+                ><ng-icon
+                  [name]="
+                    item === 'stock'
+                      ? 'lucideScanSearch'
+                      : item === 'daily'
+                        ? 'lucideNewspaper'
+                        : 'lucideChartPie'
+                  "
+                  aria-hidden="true"
+              /></span>
+              <span class="choice-copy"
+                ><span class="choice-title"
+                  >{{
+                    item === 'stock'
+                      ? 'This Stock'
+                      : item === 'daily'
+                        ? 'Daily Review'
+                        : 'Portfolio Analysis'
+                  }}
+                  @if (isUnread(item)) {
+                    <span class="new-label">New</span>
+                  }
+                </span>
+                <small>
+                  @if (item === 'stock' && forecastReady()) {
+                    <span class="choice-forecast"
+                      ><span class="forecast-mark" aria-hidden="true"></span>Forecast</span
+                    >
+                  }
+                  {{
+                    item === 'stock'
+                      ? 'What to consider next'
+                      : item === 'daily'
+                        ? 'Your day at a glance'
+                        : 'Your performance and next steps'
+                  }}</small
+                ></span
+              >
+              <ng-icon class="choice-chevron" name="lucideChevronRight" aria-hidden="true" />
+            </button>
+          }
         }
       </div>
-    } @else if (explaining()) {
-      @if (explainedCard(); as card) {
-        <article class="insight-explanation">
-          <h3>{{ card.title }}</h3>
-          <div class="card-content">
-            @if (card.takeaway) {
-              <p class="takeaway">
-                @for (part of takeawayParts(card.takeaway); track $index) {
-                  @if (part.emphasis) {
-                    <strong>{{ part.text }}</strong>
-                  } @else {
-                    {{ part.text }}
-                  }
-                }
-              </p>
-            }
-            @if (card.purpose) {
-              <h4>Why it matters</h4>
-              <p class="explanation-reason">{{ card.purpose }}</p>
-            }
-            @if (explanations()[0]; as explanation) {
-              <h4>About these figures</h4>
-              <p class="example-context">{{ explanation.description }}</p>
-            }
-          </div>
-        </article>
-      }
     } @else {
       @if (loading()) {
         <span class="visually-hidden" role="status">Fetching stock insights</span>
         <div class="skeleton insight-skeleton" aria-hidden="true"></div>
         <div class="skeleton insight-skeleton short" aria-hidden="true"></div>
       }
+      @if (displayedContext() && !snapshotStillCurrent()) {
+        <button type="button" class="update-action" (click)="select(choice()!)">
+          Update available
+        </button>
+      }
       <div class="insights" aria-live="polite">
-        @for (card of cards(); track $index) {
+        @for (card of cards(); track $index; let cardIndex = $index) {
           <article
+            (keydown.escape)="closeCardPopover($event)"
             class="insight-card"
+            [class.forecast-card]="!!card.forecast"
             [class.illustrative-card]="card.illustrative"
             [class.inactive]="activeCard() !== $index"
+            [class.before]="$index < activeCard()"
             [attr.aria-hidden]="activeCard() !== $index ? 'true' : null"
             [attr.inert]="activeCard() !== $index ? '' : null"
           >
             <div class="card-heading">
               @if (card.title) {
-                <h3>
-                  {{ card.title }}
-                  @if (card.title === 'Today' && snapshotDate()) {
-                    {{ snapshotDate() }}
-                  }
-                </h3>
+                <h3>{{ card.title }}</h3>
+              }
+              @if (card.forecast) {
+                <span class="forecast-chip"
+                  ><span class="forecast-mark" aria-hidden="true"></span>Model forecast</span
+                >
               }
               <button
                 class="explain-action"
                 type="button"
-                aria-label="Explain these numbers"
-                title="Explain these numbers"
-                (click)="explaining.set(true)"
+                aria-label="View Details"
+                title="View Details"
+                [attr.aria-expanded]="detailsOpen() === cardIndex"
+                [attr.aria-controls]="'card-details-' + cardIndex"
+                (click)="toggleDetails(cardIndex)"
               >
                 <ng-icon name="lucideCircleHelp" aria-hidden="true" />
               </button>
             </div>
-            <div class="card-content">
-              <small class="card-meta">
-                {{ card.period ?? snapshotDate() }}
-                <span
-                  >{{ ($index + 1).toString().padStart(2, '0') }} /
-                  {{ cards().length.toString().padStart(2, '0') }}</span
-                >
-              </small>
+            @if (detailsOpen() === cardIndex) {
+              <div
+                class="details-pop"
+                role="group"
+                [attr.aria-label]="(card.title ?? 'Insight') + ' details'"
+                [id]="'card-details-' + cardIndex"
+              >
+                @if (card.purpose) {
+                  <h4>Why it matters</h4>
+                  <p class="explanation-reason">{{ card.purpose }}</p>
+                }
+                <p>{{ card.detail }}</p>
+              </div>
+            }
+            @if (infoOpen() === 'aside-pop-' + cardIndex && card.aside; as aside) {
+              <div
+                class="info-pop"
+                role="group"
+                (keydown.escape)="closeInfo($event)"
+                [attr.aria-label]="aside.label"
+                [id]="'aside-pop-' + cardIndex"
+              >
+                <p>{{ aside.text }}</p>
+              </div>
+            }
+            @if (infoOpen() === 'forecast-pop-' + cardIndex && card.forecast?.record; as record) {
+              <div
+                class="info-pop"
+                role="group"
+                (keydown.escape)="closeInfo($event)"
+                aria-label="Forecast record"
+                [id]="'forecast-pop-' + cardIndex"
+              >
+                <p class="info-pop-title">
+                  Right on {{ record.hits }} of its last {{ record.total }} {{ record.unit }}.
+                </p>
+                <p>Closed weeks only. It can be wrong.</p>
+              </div>
+            }
+            <small class="card-meta">
+              <span>{{ asOfLabel() }}</span>
+              <span>Page {{ $index + 1 }} of {{ cards().length }}</span>
+            </small>
+            <div class="card-content" (scroll)="infoOpen.set(null)">
+              @if (!card.metricsFirst) {
+                <ng-container [ngTemplateOutlet]="guidance" />
+              }
+              <ng-template #guidance>
+                @if (card.takeaway) {
+                  <p
+                    [class.guidance-headline]="!card.metricsFirst"
+                    [class.guidance-statement]="card.metricsFirst"
+                    [class.prominent]="card.emphasizeTakeaway"
+                  >
+                    @if (highlightParts(card); as parts) {
+                      {{ parts[0]
+                      }}<span
+                        class="swing-word"
+                        [class.swing-more]="card.highlight?.tone === 'more'"
+                        [class.swing-less]="card.highlight?.tone === 'less'"
+                        >{{ parts[1] }}</span
+                      >{{ parts[2] }}
+                    } @else {
+                      {{ card.takeaway }}
+                    }
+                    @if (card.aside; as aside) {
+                      <button
+                        type="button"
+                        class="info-button"
+                        [attr.aria-label]="aside.label"
+                        [title]="aside.label"
+                        [attr.aria-expanded]="infoOpen() === 'aside-pop-' + cardIndex"
+                        [attr.aria-controls]="'aside-pop-' + cardIndex"
+                        (click)="toggleInfo('aside-pop-' + cardIndex)"
+                        (keydown.escape)="closeInfo($event)"
+                      >
+                        <ng-icon name="lucideInfo" aria-hidden="true" />
+                      </button>
+                    }
+                  </p>
+                }
+                @if (card.text) {
+                  <p class="guidance-description" [class.prominent]="card.emphasizeText">
+                    {{ card.text }}
+                  </p>
+                }
+                @if (card.advice) {
+                  <p class="guidance-advice">{{ card.advice }}</p>
+                }
+                @if (card.forecast?.record; as record) {
+                  <div class="forecast-record-wrap">
+                    <div class="forecast-record">
+                      <app-forecast-confidence [record]="record" />
+                      <button
+                        type="button"
+                        class="info-button"
+                        aria-label="About this confidence"
+                        title="About this confidence"
+                        [attr.aria-expanded]="infoOpen() === 'forecast-pop-' + cardIndex"
+                        [attr.aria-controls]="'forecast-pop-' + cardIndex"
+                        (click)="toggleInfo('forecast-pop-' + cardIndex)"
+                        (keydown.escape)="closeInfo($event)"
+                      >
+                        <ng-icon name="lucideInfo" aria-hidden="true" />
+                      </button>
+                    </div>
+                  </div>
+                }
+              </ng-template>
+
               @if (card.metrics?.length) {
                 <dl
                   class="overview-metrics"
                   [class.daily-metrics]="choice() === 'daily' && !card.illustrative"
-                  [class.today-metrics]="choice() === 'stock' && card.title === 'Today'"
                   [class.count-metrics]="card.distribution && card.metrics?.length === 3"
                 >
                   @for (metric of card.metrics; track $index) {
                     <div
-                      [class.primary-metric]="
-                        $first &&
-                        (choice() !== 'daily' || card.illustrative) &&
-                        card.title !== 'Performance drivers'
-                      "
+                      [class.wide-metric]="metric.value.length > 9"
+                      [class.primary-metric]="metric.primary || card.metrics?.length === 1"
                     >
-                      <dt>
-                        @if (metric.symbol && metric.symbol !== symbol() && choice() !== 'daily') {
-                          <a
-                            class="ticker-link"
-                            [routerLink]="['/dashboard/markets', metric.symbol.toLowerCase()]"
-                            [queryParams]="{ accountId: account.selectedAccountId() }"
-                            [attr.aria-label]="'Open ' + metric.symbol + ' stock analysis'"
-                          >
-                            {{ metric.label
-                            }}<ng-icon name="lucideExternalLink" aria-hidden="true" />
-                          </a>
-                        } @else {
-                          {{ metric.label }}
-                        }
-                      </dt>
+                      @if (metric.label) {
+                        <dt>
+                          @if (metric.symbol && metric.symbol !== symbol()) {
+                            <a
+                              class="ticker-link"
+                              [routerLink]="['/dashboard/markets', metric.symbol.toLowerCase()]"
+                              [attr.aria-label]="'Open ' + metric.symbol + ' stock analysis'"
+                            >
+                              {{ metric.label
+                              }}<ng-icon name="lucideExternalLink" aria-hidden="true" />
+                            </a>
+                          } @else {
+                            {{ metric.label }}
+                          }
+                        </dt>
+                      }
                       <dd [class.compact-value]="metric.value.length > 13">
                         <strong
                           [class.gain]="metric.tone === 'gain'"
                           [class.loss]="metric.tone === 'loss'"
+                          [duaCountUp]="metric.value"
+                          [duaCountUpActive]="activeCard() === cardIndex && !session.minimized()"
                           >{{ metric.value }}</strong
                         >
                         @if (metric.tone) {
@@ -207,30 +309,6 @@
                           />
                         }
                       </dd>
-                      @if (metric.stocks?.length) {
-                        <ul
-                          class="stock-list"
-                          tabindex="0"
-                          [attr.aria-label]="metric.label + ' stocks'"
-                        >
-                          @for (stock of metric.stocks; track stock.symbol) {
-                            <li>
-                              <a
-                                class="ticker-link"
-                                [routerLink]="['/dashboard/markets', stock.symbol.toLowerCase()]"
-                                [queryParams]="{ accountId: account.selectedAccountId() }"
-                                [attr.aria-label]="'Open ' + stock.symbol + ' stock analysis'"
-                                >{{ stock.symbol }}</a
-                              >
-                              <span
-                                [class.gain]="stock.change.startsWith('+')"
-                                [class.loss]="stock.change.startsWith('-')"
-                                >{{ stock.change }}</span
-                              >
-                            </li>
-                          }
-                        </ul>
-                      }
                       @if (metric.subtext) {
                         <small class="metric-subtext">
                           {{ metric.subtext }}
@@ -239,6 +317,11 @@
                     </div>
                   }
                 </dl>
+                @if (card.metricsFirst) {
+                  <ng-container [ngTemplateOutlet]="guidance" />
+                }
+              } @else if (card.metricsFirst) {
+                <ng-container [ngTemplateOutlet]="guidance" />
               } @else if (!card.takeaway) {
                 <p class="fact-line">
                   @for (part of responseParts(card.text); track $index) {
@@ -253,6 +336,66 @@
                     }
                   }
                 </p>
+              }
+              @for (section of card.movers; track $index) {
+                <section class="movers" [attr.aria-label]="section.heading ?? card.title">
+                  @if (section.heading) {
+                    <h4 class="movers-heading">{{ section.heading }}</h4>
+                  }
+                  <div class="movers-groups">
+                    @for (group of section.groups; track group.label) {
+                      <div class="movers-group">
+                        <p class="movers-label">{{ group.label }}</p>
+                        @if (group.rows.length) {
+                          <ul>
+                            @for (row of group.rows; track row.symbol) {
+                              <li>
+                                <a
+                                  class="ticker-link"
+                                  [routerLink]="['/dashboard/markets', row.symbol.toLowerCase()]"
+                                  [attr.aria-label]="'Open ' + row.symbol + ' stock analysis'"
+                                  >{{ row.symbol
+                                  }}<ng-icon name="lucideExternalLink" aria-hidden="true"
+                                /></a>
+                                <span class="movers-value"
+                                  >{{ row.value
+                                  }}<ng-icon
+                                    [name]="
+                                      group.tone === 'gain'
+                                        ? 'lucideArrowUpRight'
+                                        : 'lucideArrowDownRight'
+                                    "
+                                    [class.gain]="group.tone === 'gain'"
+                                    [class.loss]="group.tone === 'loss'"
+                                    role="img"
+                                    [attr.aria-label]="group.tone === 'gain' ? 'Up' : 'Down'"
+                                /></span>
+                              </li>
+                            }
+                          </ul>
+                        } @else {
+                          <p class="movers-empty">{{ group.empty }}</p>
+                        }
+                      </div>
+                    }
+                  </div>
+                </section>
+              }
+              @if (card.meter; as meter) {
+                <div class="swing-meter">
+                  <div class="swing-meter-labels" aria-hidden="true">
+                    <span>{{ meter.left }}</span
+                    ><span>{{ meter.right }}</span>
+                  </div>
+                  <div class="swing-meter-track" role="img" [attr.aria-label]="meter.label">
+                    <span class="swing-meter-mid" aria-hidden="true"></span>
+                    <span
+                      class="swing-meter-marker"
+                      aria-hidden="true"
+                      [style.left.%]="meter.value * 100"
+                    ></span>
+                  </div>
+                </div>
               }
               @if (card.sparkline?.length) {
                 <svg
@@ -280,17 +423,6 @@
                   }
                 </div>
               }
-              @if (card.takeaway) {
-                <p class="takeaway">
-                  @for (part of takeawayParts(card.takeaway); track $index) {
-                    @if (part.emphasis) {
-                      <strong>{{ part.text }}</strong>
-                    } @else {
-                      {{ part.text }}
-                    }
-                  }
-                </p>
-              }
               @if (card.note) {
                 <small class="overview-note">{{ card.note }}</small>
               }
@@ -299,6 +431,9 @@
         }
         @if (message()) {
           <p class="feedback" role="status">{{ message() }}</p>
+          <button type="button" class="update-action retry-action" (click)="select(choice()!)">
+            Try again
+          </button>
         }
       </div>
       @if (cards().length > 1) {
@@ -337,16 +472,41 @@
         <small class="timestamp">Live feed was disconnected when this snapshot was taken.</small>
       }
     }
+    @if (choice()) {
+      <small class="simulation-notice">Simulation guidance, not financial advice.</small>
+    }
   </div>
 </section>
+<app-dua-speech-bubble />
+<div role="status">
+  @if (forecastToast(); as forecastSymbol) {
+    <div
+      class="forecast-toast"
+      (animationend)="$event.target === $event.currentTarget && forecastToast.set('')"
+    >
+      <button type="button" class="forecast-toast-button" (click)="openForecastToast()">
+        <span class="forecast-toast-label"
+          ><span class="forecast-mark" aria-hidden="true"></span>Forecast ready</span
+        >&ngsp;
+        <span class="forecast-toast-text"
+          >Ask Dua about {{ forecastSymbol }}'s next {{ trend.trend()?.horizonDays ?? 5 }} trading
+          days</span
+        >
+      </button>
+    </div>
+  }
+</div>
 <button
   #launcher
   class="dua-launcher"
   data-tour="dua"
   type="button"
   aria-label="Dua insights"
+  [class.waking]="waking()"
+  [class.rolling]="rolling()"
+  [class.has-pill]="showPill()"
   [attr.aria-expanded]="!session.minimized()"
-  [attr.aria-description]="hasUpdates() ? '1 new insight update. Click to open chat.' : null"
+  [attr.aria-description]="hasUpdates() ? unreadCount() + ' new insight updates' : null"
   (pointerenter)="hovered.set($event.pointerType === 'mouse')"
   (pointerleave)="hovered.set(false)"
   (focus)="focused.set(launcher.matches(':focus-visible'))"
@@ -354,28 +514,19 @@
   (click)="toggle()"
 >
   <span class="launcher-clip">
-    @if (imagesFailed()) {
-      <span class="fallback">Dua</span>
-    } @else {
-      <span class="launcher-art" [class.face-visible]="faceVisible()">
-        <img
-          class="launcher-body"
-          src="/assets/assistant/shark-launcher-body-512.png"
-          alt=""
-          draggable="false"
-          (error)="imageFailed()"
-        />
-        <img
-          class="launcher-fin"
-          src="/assets/assistant/shark-launcher-fin-512.png"
-          alt=""
-          draggable="false"
-          (error)="imageFailed()"
-        />
-      </span>
-    }
+    <span class="launcher-art" [class.face-visible]="faceVisible()">
+      <app-dua-figure [mood]="mood()" [wiggle]="wiggling()" />
+    </span>
   </span>
+  @if (sleeping()) {
+    <span class="dua-zzz" aria-hidden="true"><span>z</span><span>z</span><span>z</span></span>
+  }
+  @if (showPill()) {
+    <span class="launcher-pill" aria-hidden="true">Ask Dua</span>
+  }
   @if (hasUpdates() && session.minimized()) {
-    <span class="notification-count" aria-label="1 new insight update">1</span>
+    <span class="notification-count" [attr.aria-label]="unreadCount() + ' new insight updates'">{{
+      unreadCount()
+    }}</span>
   }
 </button>

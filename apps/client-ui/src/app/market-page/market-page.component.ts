@@ -1,4 +1,3 @@
-import { DuaComponent } from '../dua/dua.component';
 import { OrderEditorComponent } from '../dashboard/shared/order-editor.component';
 import { WatchlistStore } from '../dashboard/watchlist/watchlist-store.service';
 import { WatchlistStarComponent } from '../dashboard/watchlist/watchlist-star.component';
@@ -11,7 +10,7 @@ import { cashAt, holdingsAt, executionTime } from '../dashboard/accounts/simulat
 import { OrderService } from '../dashboard/orders/order.service';
 import { OrderResult } from '../dashboard/orders/order.models';
 import { toOrderErrorMessage } from '../dashboard/orders/order-error';
-import { ToastService } from '../notifications/toast.service';
+import { DuaSpeech } from '../dua/dua-speech.service';
 import { AuthService } from '../core/auth/auth.service';
 import { ThemeToggleComponent } from '../core/theme/theme-toggle.component';
 import { DashboardHeaderDropdownComponent } from '../dashboard/shared/dashboard-header-dropdown.component';
@@ -20,6 +19,8 @@ import { TermsDialogComponent } from '../dashboard/terms/terms-dialog.component'
 import { AccountControlComponent } from '../dashboard/shared/account-control.component';
 import { MarketClockControlComponent } from '../dashboard/shared/market-clock-control.component';
 import { MarketClockService } from '../dashboard/shared/market-clock.service';
+
+import { DuaComponent } from '../dua/dua.component';
 import {
   ActivityItem,
   ActivityRowComponent,
@@ -31,8 +32,8 @@ import {
   NgTemplateOutlet,
   CurrencyPipe,
   DecimalPipe,
-  TitleCasePipe,
   isPlatformBrowser,
+  TitleCasePipe,
 } from '@angular/common';
 import {
   ChangeDetectionStrategy,
@@ -65,19 +66,20 @@ import {
   lucideChartLine,
   lucideChartNoAxesColumn,
   lucideCrosshair,
-  lucideBotMessageSquare,
-  lucideMessageSquareText,
   lucidePanelRightClose,
   lucidePanelRightOpen,
   lucideGitCompare,
   lucidePercent,
+  lucideSlidersHorizontal,
+  lucideUserRound,
+  lucideX,
+  lucideBell,
+  lucideBotMessageSquare,
+  lucideMessageSquareText,
   lucideSendHorizontal,
   lucideShieldCheck,
-  lucideSlidersHorizontal,
   lucideTrendingUp,
-  lucideUserRound,
   lucideUsersRound,
-  lucideX,
 } from '@ng-icons/lucide';
 import { Subscription } from 'rxjs';
 import { Instrument, Timeframe, findInstrument } from '../dashboard/mock-data';
@@ -103,6 +105,7 @@ import { SignedPercentPipe } from '../dashboard/shared/signed-percent.pipe';
 import { TickAnimations } from '../dashboard/shared/tick-animations';
 import { TimeframeToggleComponent } from '../dashboard/shared/timeframe-toggle.component';
 import { TradeTicketComponent } from '../dashboard/shared/trade-ticket.component';
+import { DuaEmptyComponent } from '../dua/dua-empty.component';
 
 type PageStatus = 'loading' | 'ready' | 'not-found' | 'error';
 type ChartStatus = 'loading' | 'ready' | 'empty' | 'error';
@@ -125,8 +128,10 @@ interface MarketStats {
   selector: 'app-market-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    DuaEmptyComponent,
     ThemeToggleComponent,
     DuaComponent,
+    TitleCasePipe,
     NgTemplateOutlet,
     OrderEditorComponent,
     WatchlistStarComponent,
@@ -148,7 +153,6 @@ interface MarketStats {
     PriceChartComponent,
     RouterLink,
     SignedPercentPipe,
-    TitleCasePipe,
     TimeframeToggleComponent,
     TradeTicketComponent,
     TermsDialogComponent,
@@ -157,7 +161,7 @@ interface MarketStats {
     MarketClockService,
 
     provideIcons({
-          lucideActivity,
+      lucideActivity,
       lucideSettings,
       lucideLogOut,
       lucideChevronDown,
@@ -169,19 +173,20 @@ interface MarketStats {
       lucideChartLine,
       lucideChartNoAxesColumn,
       lucideCrosshair,
-      lucideBotMessageSquare,
-      lucideMessageSquareText,
       lucidePanelRightClose,
       lucidePanelRightOpen,
       lucideGitCompare,
       lucidePercent,
+      lucideSlidersHorizontal,
+      lucideUserRound,
+      lucideX,
+      lucideBell,
+      lucideBotMessageSquare,
+      lucideMessageSquareText,
       lucideSendHorizontal,
       lucideShieldCheck,
-      lucideSlidersHorizontal,
       lucideTrendingUp,
-      lucideUserRound,
       lucideUsersRound,
-      lucideX,
     }),
   ],
   templateUrl: './market-page.component.html',
@@ -203,12 +208,11 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   protected readonly orders = inject(OrderService);
   protected readonly clock = inject(MarketClockService);
 
-  private readonly toasts = inject(ToastService);
+  // Dua says each order's outcome in its speech bubble.
+  private readonly speech = inject(DuaSpeech);
   private readonly destroyRef = inject(DestroyRef);
 
-  protected readonly openHeaderDropdown = signal<
-    'account' | 'profile' | null
-  >(null);
+  protected readonly openHeaderDropdown = signal<'account' | 'profile' | null>(null);
   protected readonly profileInitials = this.accountStore.initials;
   protected readonly settingsOpen = signal(false);
 
@@ -238,17 +242,6 @@ export class MarketPageComponent implements OnInit, OnDestroy {
       this.settingsOpen.set(false);
       this.accountDialog.set(null);
     });
-  });
-
-  private readonly requestedAccountId = signal<number | null>(null);
-  private appliedAccountId: number | null = null;
-  private readonly selectRequestedAccount = effect(() => {
-    const id = this.requestedAccountId();
-
-    if (this.accountStore.status() === 'ready' && id !== null && id !== this.appliedAccountId) {
-      this.appliedAccountId = id;
-      this.accountStore.selectAccount(id);
-    }
   });
 
   protected readonly submitting = signal(false);
@@ -325,7 +318,13 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   protected readonly availableCash = computed(() => {
     const draft = this.tradeTicket()?.draft();
     return draft?.side === 'buy'
-      ? Math.max(0, this.cashBalance() - (draft.reservationPrice ? draft.quantity * draft.reservationPrice : draft.estimatedValue))
+      ? Math.max(
+          0,
+          this.cashBalance() -
+            (draft.reservationPrice
+              ? draft.quantity * draft.reservationPrice
+              : draft.estimatedValue),
+        )
       : this.cashBalance();
   });
   protected readonly heldShares = computed(() =>
@@ -400,21 +399,11 @@ export class MarketPageComponent implements OnInit, OnDestroy {
       });
   }
 
+  // The store keeps the choice for the dashboard and this tab; the URL never carries it.
   protected selectAccount(id: number): void {
-    if (!this.accountStore.selectAccount(id)) {
-      return;
+    if (this.accountStore.selectAccount(id)) {
+      this.openHeaderDropdown.set(null);
     }
-
-    this.requestedAccountId.set(id);
-
-    this.openHeaderDropdown.set(null);
-
-    void this.router.navigate([], {
-      relativeTo: this.route,
-      queryParams: { accountId: id },
-      queryParamsHandling: 'merge',
-      replaceUrl: true,
-    });
   }
 
   protected openCreateAccount(): void {
@@ -498,18 +487,17 @@ export class MarketPageComponent implements OnInit, OnDestroy {
           if (result.status === 'FILLED') {
             const message = `Filled ${result.quantity} ${draft.symbol} at ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(result.executionPrice ?? result.indicativePrice)}.`;
 
-            this.toasts.show(message, 'success');
+            this.speech.say(message);
             this.refreshBalances(accountId);
           } else if (result.status === 'REJECTED') {
             const message = `Rejected: ${result.rejectionReason ?? 'The order was rejected.'}`;
             this.orderError.set(message);
-            this.toasts.show(message, 'error');
+            this.speech.say(message, 'error');
           } else {
             this.refreshBalances(accountId);
             const type = (draft.executionType ?? 'MARKET').replaceAll('_', '-').toLowerCase();
-            this.toasts.show(
+            this.speech.say(
               `${type.charAt(0).toUpperCase() + type.slice(1)} ${draft.side} order placed for ${result.quantity} ${draft.symbol}.`,
-              'success',
             );
           }
         },
@@ -517,7 +505,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
           this.submitting.set(false);
           const message = toOrderErrorMessage(error);
           this.orderError.set(message);
-          this.toasts.show(message, 'error');
+          this.speech.say(message, 'error');
         },
       });
   }
@@ -582,8 +570,12 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     () => this.chartModes.find((option) => option.value === this.chartMode()) ?? this.chartModes[0],
   );
   protected readonly liveTailing = signal(true);
+  protected readonly duaOutlook = signal(false);
   protected readonly insightTab = signal<InsightTab>('trading');
   protected readonly toolsCollapsed = signal(false);
+  // The chart's Forecast button opens Dua on This Stock, and reads as pressed while that shows.
+  private readonly dua = viewChild(DuaComponent);
+  protected readonly forecastOpen = computed(() => this.dua()?.stockOpen() ?? false);
   protected readonly openToolbarMenu = signal<ToolbarMenu | null>(null);
   protected readonly enabledIndicators = signal<readonly TechnicalIndicator[]>([]);
   protected readonly indicatorOptions = [
@@ -738,7 +730,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
         this.refreshBalances(accountId);
       }
       if (order.status === 'REJECTED') {
-        this.toasts.show(order.rejectionReason ?? 'Order rejected.', 'error');
+        this.speech.say(order.rejectionReason ?? 'Order rejected.', 'error');
       }
     });
     if (!isPlatformBrowser(this.platformId)) {
@@ -770,12 +762,10 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     );
     this.routeSubscription.add(
       this.route.queryParamMap.subscribe((params) => {
-        const accountId = Number(params.get('accountId'));
-
-        this.requestedAccountId.set(
-          Number.isInteger(accountId) && accountId > 0 ? accountId : null,
-        );
-
+        // A tab name in the query opens that tool, so a link can land on the Outlook card.
+        if (params.get('tab') === 'outlook') {
+          this.duaOutlook.set(true);
+        }
         const rawSymbol = params.get('compare') ?? '';
         const symbol = normalizeMarketSymbol(rawSymbol);
         this.comparisonSymbol.set(symbol);
@@ -810,7 +800,6 @@ export class MarketPageComponent implements OnInit, OnDestroy {
         compare: compare && compare !== instrument.symbol ? marketSymbolSlug(compare) : null,
         accountId: this.accountStore.selectedAccountId(),
       },
-
       queryParamsHandling: 'merge',
     });
   }
@@ -837,6 +826,14 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   }
 
   private readonly menuHost = inject(ElementRef<HTMLElement>);
+
+  protected selectTab(tab: InsightTab): void {
+    this.insightTab.set(tab);
+  }
+
+  protected toggleForecast(): void {
+    this.dua()?.toggleStock();
+  }
   protected readonly toolbarMenuPosition = signal({ left: 0, top: 0 });
 
   @HostListener('window:resize')

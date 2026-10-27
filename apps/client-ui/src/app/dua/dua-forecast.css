@@ -1,0 +1,109 @@
+/* Dua's model forecast cards: their badge, their record and the light that marks them. */
+
+/* Model forecasts: a small badge beside the card title says where the call comes from. */
+.forecast-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-right: auto;
+  padding: 2px 8px;
+  border: 1px solid color-mix(in srgb, var(--primary) 45%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.forecast-mark {
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  background: currentColor;
+  transform: rotate(45deg);
+}
+
+/*
+ * The card's content scrolls, so it clips whatever reaches past its edge. It reaches 10px into
+ * the card's padding, its text staying put, so the info button's focus ring is not cut off.
+ */
+.insight-card .card-content {
+  max-width: calc(100% + 20px);
+  margin-inline: -10px;
+  padding-inline: 10px;
+}
+
+/* The forecast's record: its confidence score, and an info button that opens the details. */
+.forecast-record-wrap {
+  margin-top: 14px;
+}
+.forecast-record {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  color: var(--dua-copy);
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+/*
+ * While a forecast card is showing, the Dua panel it sits in rests with a faint edge and glow in
+ * the brand hue. Cards sit flush inside the panel with no border of their own, so the panel's
+ * border is the one that lights. It is drawn as a conic gradient so the sweep below can run a
+ * band of light round it; at rest the band is the same colour as the edge.
+ */
+@property --dua-forecast-light {
+  syntax: '<color>';
+  initial-value: transparent;
+  inherits: false;
+}
+.dua-panel:has(.insight-card.forecast-card:not(.inactive)) {
+  --dua-forecast-edge: color-mix(in srgb, var(--primary) 45%, var(--border));
+  --dua-forecast-glint: color-mix(in srgb, var(--primary) 75%, white);
+  --dua-forecast-light: var(--dua-forecast-edge);
+  border-color: transparent;
+  background:
+    linear-gradient(to bottom, transparent 48%, var(--dua-edge) 100%) padding-box,
+    radial-gradient(ellipse at 25% 0%, var(--dua-cyan), transparent 70%) padding-box,
+    radial-gradient(ellipse at 0% 45%, var(--dua-purple), transparent 75%) padding-box,
+    linear-gradient(var(--dua-base), var(--dua-base)) padding-box,
+    conic-gradient(
+        from var(--dua-angle),
+        var(--dua-forecast-edge) 0deg 280deg,
+        var(--dua-forecast-light) 325deg,
+        var(--dua-forecast-edge) 360deg
+      )
+      border-box;
+  box-shadow:
+    0 16px 40px -12px #000b,
+    0 0 24px -8px color-mix(in srgb, var(--primary) 55%, transparent);
+}
+
+/*
+ * Each time a forecast card comes into view, a band of light runs once round the panel's border,
+ * then settles into the resting edge. One sweep, never a loop; none under reduced motion.
+ */
+.dua-panel:has(.insight-card.forecast-card:not(.inactive)) {
+  animation: dua-forecast-sweep 1.4s cubic-bezier(0.45, 0, 0.25, 1) 180ms both;
+}
+@keyframes dua-forecast-sweep {
+  0% {
+    --dua-angle: 0deg;
+    --dua-forecast-light: var(--dua-forecast-edge);
+  }
+  18%,
+  78% {
+    --dua-forecast-light: var(--dua-forecast-glint);
+  }
+  100% {
+    --dua-angle: 360deg;
+    --dua-forecast-light: var(--dua-forecast-edge);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dua-panel:has(.insight-card.forecast-card:not(.inactive)) {
+    animation: none;
+  }
+}
