@@ -1,4 +1,6 @@
-import { countUpText } from './dua-count-up.directive';
+import { Component, signal } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
+import { countUpText, DuaCountUpDirective } from './dua-count-up.directive';
 
 describe('countUpText', () => {
   it('starts at zero and ends at the value, keeping its format', () => {
@@ -18,5 +20,74 @@ describe('countUpText', () => {
   it('has nothing to count without a non-zero number', () => {
     expect(countUpText('n/a', 0.5)).toBeNull();
     expect(countUpText('$0.00', 0.5)).toBeNull();
+  });
+});
+
+@Component({
+  imports: [DuaCountUpDirective],
+  template: `<span [duaCountUp]="value()" [duaCountUpActive]="active()">{{ value() }}</span>`,
+})
+class CountUpHost {
+  readonly value = signal('$1,000');
+  readonly active = signal(true);
+}
+
+describe('DuaCountUpDirective', () => {
+  const original = window.matchMedia;
+  let frames: FrameRequestCallback[];
+  let cancel: ReturnType<typeof vi.fn>;
+  const motion = (reduced: boolean) => {
+    window.matchMedia = ((query: string) => ({ matches: reduced, media: query })) as never;
+  };
+  beforeEach(() => {
+    frames = [];
+    cancel = vi.fn();
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) =>
+      frames.push(callback),
+    );
+    vi.stubGlobal('cancelAnimationFrame', cancel);
+    vi.spyOn(performance, 'now').mockReturnValue(0);
+  });
+  afterEach(() => {
+    window.matchMedia = original;
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+  // The directive's own frame; Angular schedules frames of its own too.
+  const step = () => frames.filter((f) => f.name === 'step').at(-1)!;
+  const render = () => {
+    const fixture = TestBed.createComponent(CountUpHost);
+    fixture.detectChanges();
+    TestBed.tick();
+    return { fixture, span: fixture.nativeElement.querySelector('span') as HTMLElement };
+  };
+
+  it('counts up frame by frame, then shows the real text', () => {
+    motion(false);
+    const { span } = render();
+    expect(span.classList).toContain('counting');
+    expect(span.dataset['count']).toBe('$0');
+    step()(350);
+    expect(span.dataset['count']).toBe('$875');
+    step()(700);
+    expect(span.classList).not.toContain('counting');
+    expect(span.dataset['count']).toBeUndefined();
+  });
+
+  it('cancels the count when its card stops being active', () => {
+    motion(false);
+    const { fixture, span } = render();
+    fixture.componentInstance.active.set(false);
+    fixture.detectChanges();
+    TestBed.tick();
+    expect(cancel).toHaveBeenCalled();
+    expect(span.classList).not.toContain('counting');
+  });
+
+  it('does not count under reduced motion', () => {
+    motion(true);
+    const { span } = render();
+    expect(frames.some((f) => f.name === 'step')).toBe(false);
+    expect(span.classList).not.toContain('counting');
   });
 });

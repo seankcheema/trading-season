@@ -593,6 +593,70 @@ describe('Dua panel', () => {
       trend.trend.set(forecasts);
     }
   });
+  describe('on a down call', () => {
+    const forecasts = trend.trend();
+    beforeEach(() => {
+      const days = forecasts.symbols.AAPL.days;
+      trend.trend.set({
+        ...forecasts,
+        symbols: {
+          AAPL: {
+            ...forecasts.symbols.AAPL,
+            days: [...days.slice(0, -1), { ...days[days.length - 1], signal: 'down' }],
+          },
+        },
+      } as never);
+    });
+    afterEach(() => trend.trend.set(forecasts));
+    const open = (holdings: unknown[]) => {
+      const view = setup();
+      view.fixture.componentRef.setInput('symbol', 'AAPL');
+      view.fixture.componentRef.setInput('holdings', holdings);
+      view.fixture.detectChanges();
+      view.click('This Stock');
+      return view;
+    };
+    it('suggests selling a stock the user holds', () => {
+      const { text, details } = open([{ symbol: 'AAPL', quantity: 2, averageCost: 100 }]);
+      expect(text()).toContain('Consider selling AAPL.');
+      // The model leans up (64%), so it gives no chance for the down call it disagrees with.
+      expect(details()).not.toContain('chance the price will be');
+    });
+    it('suggests holding off on a stock the user does not hold', () => {
+      expect(open([]).text()).toContain('Hold off on buying AAPL.');
+    });
+  });
+  it('loads price history for filled stocks named only by ticker, and none with nothing to chart', () => {
+    const orders = TestBed.inject(OrderService) as unknown as Record<string, unknown>;
+    const holdings = account.selectedHoldings();
+    orders['loadOrders'] = () =>
+      of([
+        { accountId: 1, status: 'FILLED', instrumentId: 7 },
+        { accountId: 1, status: 'OPEN', instrumentId: 8 },
+        { accountId: 2, status: 'FILLED', instrumentId: 8 },
+      ]);
+    orders['instruments'] = () =>
+      of([
+        { instrumentId: 7, ticker: 'MSFT' },
+        { instrumentId: 8, ticker: 'KO' },
+      ]);
+    account.selectedHoldings.set([]);
+    market.candles.mockClear();
+    try {
+      const { click } = setup();
+      click('Portfolio Analysis');
+      expect(market.candles.mock.calls.map((c) => c[1])).toEqual(['MSFT']);
+      market.candles.mockClear();
+      orders['loadOrders'] = () => of([]);
+      account.selectedHoldings.set([]);
+      clock.marketSessionId.set(2);
+      TestBed.tick();
+      expect(market.candles).not.toHaveBeenCalled();
+    } finally {
+      account.selectedHoldings.set(holdings);
+      clock.marketSessionId.set(1);
+    }
+  });
   it('describes recent swings, measured from the volatility file, instead of momentum', () => {
     const files = signals.signals();
     const days = files.symbols.AAPL.days;

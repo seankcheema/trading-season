@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router } from '@angular/router';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting, HttpTestingController } from '@angular/common/http/testing';
 import { DuaSession, ReadContext } from './dua-session.service';
@@ -63,6 +63,48 @@ describe('Dua viewed versions', () => {
     http.expectOne((r) => r.method === 'PUT').flush(null);
     query.flush([]);
     expect(session.unread(context)).toBe(false);
+  });
+  it('queries again with the latest contexts once an older query finishes', () => {
+    const newer = { ...context, version: 'new' };
+    session.query([context]);
+    const first = http.expectOne((r) => r.method === 'POST');
+    session.query([context, newer]);
+    first.flush([]);
+    const second = http.expectOne((r) => r.method === 'POST');
+    expect(second.request.body).toEqual({ contexts: [context, newer] });
+    second.flush([newer]);
+    expect(session.unread(newer)).toBe(false);
+  });
+  it('can query again after a failed query', () => {
+    session.query([context]);
+    http
+      .expectOne((r) => r.method === 'POST')
+      .flush({}, { status: 503, statusText: 'Unavailable' });
+    session.query([context]);
+    http.expectOne((r) => r.method === 'POST').flush([context]);
+    expect(session.unread(context)).toBe(false);
+  });
+  it('ignores a write response after identity changes', () => {
+    session.viewedSummary(context);
+    const write = http.expectOne((r) => r.method === 'PUT');
+    changeIdentity();
+    write.flush(null);
+    expect(session.unread(context)).toBe(true);
+  });
+  it('on focus, queries while open and retries unsaved acknowledgments', () => {
+    session.minimized.set(false);
+    session.query([context]);
+    http.expectOne((r) => r.method === 'POST').flush([]);
+    session.viewedSummary(context);
+    http.expectOne((r) => r.method === 'PUT').flush({}, { status: 503, statusText: 'Unavailable' });
+    window.dispatchEvent(new Event('focus'));
+    http.expectOne((r) => r.method === 'POST').flush([]);
+    http.expectOne((r) => r.method === 'PUT').flush(null);
+  });
+  it('minimizes when navigation starts', async () => {
+    session.minimized.set(false);
+    await TestBed.inject(Router).navigateByUrl('/');
+    expect(session.minimized()).toBe(true);
   });
   it('ignores a query response after identity changes', () => {
     session.query([context]);

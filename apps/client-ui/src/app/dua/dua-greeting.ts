@@ -47,17 +47,20 @@ export function duaGreeting(at: string, timezone: string, firstName: string): st
   const name = firstName.trim() ? `, ${firstName.trim()}` : '';
   const moment = marketMoment(at, timezone);
   const hour = moment ? Math.floor(moment.minute / 60) : null;
-  const hello =
-    hour === null
-      ? `Hi${name}!`
-      : hour >= 5 && hour < 12
-        ? `Morning${name}!`
-        : hour >= 12 && hour < 17
-          ? `Afternoon${name}!`
-          : hour >= 17 && hour < 22
-            ? `Evening${name}!`
-            : `Up late${name}?`;
-  return `${hello} What should we review?`;
+  return `${hello(hour, name)} What should we review?`;
+}
+
+function hello(hour: number | null, name: string): string {
+  if (hour === null) {
+    return `Hi${name}!`;
+  }
+  if (hour >= 5 && hour < 12) {
+    return `Morning${name}!`;
+  }
+  if (hour >= 12 && hour < 17) {
+    return `Afternoon${name}!`;
+  }
+  return hour >= 17 && hour < 22 ? `Evening${name}!` : `Up late${name}?`;
 }
 
 // Where the simulated market is in its day, short enough to sit beside Dua's name: opening

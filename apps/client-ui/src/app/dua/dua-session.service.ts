@@ -38,7 +38,9 @@ export class DuaSession {
   }
   query(contexts: ReadContext[]): void {
     this.contexts = contexts;
-    if (!contexts.length || this.querying) return;
+    if (!contexts.length || this.querying) {
+      return;
+    }
     this.querying = true;
     const generation = this.generation;
     this.http
@@ -46,15 +48,23 @@ export class DuaSession {
       .pipe(takeUntilDestroyed(this.destroy))
       .subscribe({
         next: (entries) => {
-          if (generation !== this.generation) return;
+          if (generation !== this.generation) {
+            return;
+          }
           // Acknowledgments are immutable; a response started before a local write cannot unread it.
-          for (const entry of entries) this.viewed.add(key(entry));
+          for (const entry of entries) {
+            this.viewed.add(key(entry));
+          }
           this.revision.update((n) => n + 1);
           this.querying = false;
-          if (JSON.stringify(this.contexts) !== JSON.stringify(contexts)) this.query(this.contexts);
+          if (JSON.stringify(this.contexts) !== JSON.stringify(contexts)) {
+            this.query(this.contexts);
+          }
         },
         error: () => {
-          if (generation === this.generation) this.querying = false;
+          if (generation === this.generation) {
+            this.querying = false;
+          }
         },
       });
   }
@@ -71,7 +81,9 @@ export class DuaSession {
       .pipe(takeUntilDestroyed(this.destroy))
       .subscribe({
         next: () => {
-          if (generation === this.generation) this.pending.delete(key(context));
+          if (generation === this.generation) {
+            this.pending.delete(key(context));
+          }
         },
         error: () => undefined,
       });
@@ -80,7 +92,9 @@ export class DuaSession {
     inject(Router)
       .events.pipe(takeUntilDestroyed())
       .subscribe((event) => {
-        if (event instanceof NavigationStart) this.minimized.set(true);
+        if (event instanceof NavigationStart) {
+          this.minimized.set(true);
+        }
       });
     inject(TokenStorageService).onIdentityChange(() => {
       this.generation++;
@@ -92,8 +106,12 @@ export class DuaSession {
       this.revision.update((n) => n + 1);
     });
     const sync = () => {
-      if (!this.minimized()) this.query(this.contexts);
-      for (const context of this.pending.values()) this.save(context);
+      if (!this.minimized()) {
+        this.query(this.contexts);
+      }
+      for (const context of this.pending.values()) {
+        this.save(context);
+      }
     };
     if (typeof window !== 'undefined') {
       window.addEventListener('focus', sync);

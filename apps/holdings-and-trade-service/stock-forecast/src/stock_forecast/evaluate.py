@@ -11,6 +11,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+# Matplotlib placement names shared by several charts.
+OFFSET_POINTS = "offset points"
+UPPER_LEFT = "upper left"
+
 
 def rmse(actual: np.ndarray, predicted: np.ndarray) -> float:
     """Root mean squared error."""
@@ -246,7 +250,7 @@ def plot_direction_accuracy(table: pd.DataFrame, always_up_rate: float, path: Pa
     fig, ax = plt.subplots(figsize=(8, 0.5 * len(rows) + 1.5))
     ax.barh(rows["model"], rows["direction_accuracy"] * 100)
     ax.axvline(always_up_rate * 100, linestyle="--", color="black", linewidth=1)
-    ax.annotate("always up", (always_up_rate * 100, len(rows) - 0.5), xytext=(4, 0), textcoords="offset points")
+    ax.annotate("always up", (always_up_rate * 100, len(rows) - 0.5), xytext=(4, 0), textcoords=OFFSET_POINTS)
     ax.set_xlabel("Direction accuracy (%)")
     lo = min(rows["direction_accuracy"].min(), always_up_rate) * 100
     hi = max(rows["direction_accuracy"].max(), always_up_rate) * 100
@@ -343,7 +347,7 @@ def plot_buy_signal(walk: pd.DataFrame, path: Path, title: str) -> Path:
         ax.bar(offset, rows["hit_rate"] * 100, width, color=_model_color(model), label=f"{model}: flagged days up")
         for xi, (rate, n) in zip(offset, zip(rows["hit_rate"], rows["signals"])):
             if n > 0:
-                ax.annotate(f"{int(n)} d", (xi, rate * 100), xytext=(0, 2), textcoords="offset points",
+                ax.annotate(f"{int(n)} d", (xi, rate * 100), xytext=(0, 2), textcoords=OFFSET_POINTS,
                             ha="center", fontsize=7)
     up = walk.groupby("year")["up_rate"].first().reindex(years)
     ax.scatter(x, up * 100, color="black", marker="_", s=600, linewidths=2, zorder=3, label="every day's up-rate (bar to clear)")
@@ -355,7 +359,7 @@ def plot_buy_signal(walk: pd.DataFrame, path: Path, title: str) -> Path:
     # Head-room above the tallest bar keeps the legend off the bars.
     ax.set_ylim(max(0, lo - 8), min(100, hi + 14))
     ax.set_title(title)
-    ax.legend(fontsize=8, loc="upper left")
+    ax.legend(fontsize=8, loc=UPPER_LEFT)
     return _save(fig, path)
 
 
@@ -376,7 +380,7 @@ def plot_platform_calibration(summary: pd.DataFrame, path: Path, title: str, bar
     ax.set_ylabel("Big-move accuracy (%)")
     ax.set_ylim(max(0, (summary["accuracy"].min() * 100) - 8), min(100, summary["accuracy"].max() * 100 + 16))
     ax.set_title(title)
-    ax.legend(fontsize=7, loc="upper left", ncol=2)
+    ax.legend(fontsize=7, loc=UPPER_LEFT, ncol=2)
     return _save(fig, path)
 
 
@@ -463,9 +467,9 @@ def plot_symbol_comparison(summary: pd.DataFrame, path: Path, title: str) -> Pat
         ax.set_title(task.capitalize())
         if len(models) > 3:
             # Many variants: keep the legend beside the bars instead of over them.
-            ax.legend(fontsize=8, loc="upper left", bbox_to_anchor=(1.01, 1), borderaxespad=0)
+            ax.legend(fontsize=8, loc=UPPER_LEFT, bbox_to_anchor=(1.01, 1), borderaxespad=0)
         else:
-            ax.legend(fontsize=8, loc="upper left")
+            ax.legend(fontsize=8, loc=UPPER_LEFT)
     fig.suptitle(title)
     return _save(fig, path)
 
@@ -486,7 +490,7 @@ def plot_platform_demo(table: pd.DataFrame, path: Path, title: str) -> Path:
         for bar, auc in zip(bars, rows["auc"]):
             if pd.notna(auc):
                 ax.annotate(f"AUC {auc:.2f}", (bar.get_x() + bar.get_width() / 2, bar.get_height()),
-                            xytext=(0, 3), textcoords="offset points", ha="center", fontsize=8)
+                            xytext=(0, 3), textcoords=OFFSET_POINTS, ha="center", fontsize=8)
         ax.set_xticks(range(len(rows)), labels, rotation=20, ha="right", fontsize=8)
         ax.set_ylim(40, 90)
         ax.axhline(50, color="grey", linestyle=":", linewidth=1)
@@ -517,7 +521,7 @@ def plot_spike(daily: pd.DataFrame, spikes: list, path: Path, title: str, start:
                        label="Scheduled volatility spike")
     handles = ax.get_legend_handles_labels()[0] + twin.get_legend_handles_labels()[0]
     labels = ax.get_legend_handles_labels()[1] + twin.get_legend_handles_labels()[1]
-    ax.legend(handles, labels, fontsize=8, loc="upper left")
+    ax.legend(handles, labels, fontsize=8, loc=UPPER_LEFT)
     ax.set_title(title)
     fig.autofmt_xdate()
     return _save(fig, path)

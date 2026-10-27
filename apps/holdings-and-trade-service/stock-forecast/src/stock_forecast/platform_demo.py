@@ -25,6 +25,10 @@ from .lstm_model import load_artifacts, predict_up_probability
 from .pipeline import big_move_days, big_move_threshold, load_direction_dataset, training_up_rate
 from .windows import fit_scalers, make_windows
 
+# Variant names; they label rows in reports/platform_demo.csv.
+AS_TRAINED = "as trained"
+RECALIBRATED = "recalibrated"
+
 
 def load_platform_prices(directory: Path = config.PLATFORM_DIR) -> dict[str, pd.DataFrame]:
     """Every exported <symbol>.csv in the folder, keyed by upper-case symbol."""
@@ -125,20 +129,20 @@ def platform_rows(data: pd.DataFrame) -> tuple[list[dict], pd.Timestamp, pd.Time
         cols = scalers.feature_cols
         recalibrated = fit_scalers(warmup.iloc[:-1], cols)  # last warm-up label belongs to the scored period
         probs = {}
-        for variant, sc in (("as trained", scalers), ("recalibrated", recalibrated)):
+        for variant, sc in ((AS_TRAINED, scalers), (RECALIBRATED, recalibrated)):
             X, _ = make_windows(scored, sc, lookback, history=warmup)
             probs[variant] = predict_up_probability(model, X)
         target = scored["target"].to_numpy()
         if task == "direction":
             trend = (scored[f"momentum_{config.MOMENTUM_WINDOW}"].to_numpy() > 0).astype(float)
-            for variant in ("as trained", "recalibrated"):
+            for variant in (AS_TRAINED, RECALIBRATED):
                 rows.append(_score(task, variant, "LSTM direction", target, probs[variant], real_up_rate))
             rows.append(_score(task, "rule", "Always up", target, np.full(len(target), real_up_rate), real_up_rate))
             rows.append(_score(task, "rule", "Follow the 20-day trend", target, trend, real_up_rate))
         else:
-            for variant, threshold in (("as trained", real_threshold), ("recalibrated", big_move_threshold(warmup))):
+            for variant, threshold in ((AS_TRAINED, real_threshold), (RECALIBRATED, big_move_threshold(warmup))):
                 actual = np.abs(target) > threshold
-                base = float((np.abs(warmup["target"].iloc[:-1]) > threshold).mean()) if variant == "recalibrated" else 0.5
+                base = float((np.abs(warmup["target"].iloc[:-1]) > threshold).mean()) if variant == RECALIBRATED else 0.5
                 rows.append(_score(task, variant, "LSTM volatility", target, probs[variant], base, threshold))
                 # Rules on the same days and the same cut-off: the better constant answer, and today's move size.
                 one = np.full(len(target), float(actual.mean() >= 0.5))

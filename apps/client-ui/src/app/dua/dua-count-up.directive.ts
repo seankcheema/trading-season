@@ -10,7 +10,9 @@ const DURATION = 700;
 export function countUpText(value: string, progress: number): string | null {
   const match = NUMBER.exec(value);
   const target = match ? Number(match[0].replaceAll(',', '')) : 0;
-  if (!match || !target) return null;
+  if (!match || !target) {
+    return null;
+  }
   const decimals = match[0].split('.')[1]?.length ?? 0;
   const eased = 1 - (1 - Math.min(Math.max(progress, 0), 1)) ** 3;
   const current = (target * eased).toLocaleString('en-US', {
@@ -48,7 +50,9 @@ export class DuaCountUpDirective {
       typeof window.matchMedia === 'function' &&
       typeof requestAnimationFrame === 'function' &&
       !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (!motion || countUpText(value, 0) === null) return;
+    if (!motion || countUpText(value, 0) === null) {
+      return;
+    }
     const started = performance.now();
     const step = (now: number) => {
       const progress = (now - started) / DURATION;
@@ -65,7 +69,9 @@ export class DuaCountUpDirective {
   }
 
   private stop(): void {
-    if (this.frame) cancelAnimationFrame(this.frame);
+    if (this.frame) {
+      cancelAnimationFrame(this.frame);
+    }
     this.frame = 0;
     this.element.classList.remove('counting');
     delete this.element.dataset['count'];

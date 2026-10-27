@@ -21,8 +21,12 @@ const marketDay = (at: string | number) =>
 
 export function periodDate(at: string, period: 'daily' | 'week' | 'month'): string {
   const day = marketDay(at);
-  if (period === 'daily') return day;
-  if (period === 'month') return `${day.slice(0, 7)}-01`;
+  if (period === 'daily') {
+    return day;
+  }
+  if (period === 'month') {
+    return `${day.slice(0, 7)}-01`;
+  }
   const date = new Date(`${day}T12:00:00Z`);
   date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));
   return date.toISOString().slice(0, 10);
@@ -57,17 +61,20 @@ export function performance(
   const starting = new Map(ending.map((h) => [h.symbol, h.quantity]));
   for (const order of periodTrades) {
     const symbol = symbolFor(order);
-    if (symbol)
+    if (symbol) {
       starting.set(
         symbol,
         (starting.get(symbol) ?? 0) + (order.orderType === 'BUY' ? -1 : 1) * order.quantity,
       );
+    }
   }
   const startPositions = [...starting].map(([symbol, quantity]) => ({ symbol, quantity }));
   const symbols = new Set([...startPositions, ...ending].map((h) => h.symbol));
   periodTrades.forEach((o) => {
     const s = symbolFor(o);
-    if (s) symbols.add(s);
+    if (s) {
+      symbols.add(s);
+    }
   });
   const result = [...symbols].sort().map((symbol) => {
     const candles =
@@ -83,10 +90,9 @@ export function performance(
     const fills = periodTrades.filter((o) => symbolFor(o) === symbol);
     // As elsewhere in the app, a fill without a recorded execution price uses its indicative price.
     const fillPrice = (o: OrderResult) => o.executionPrice ?? o.indicativePrice;
-    const missing =
-      (quantity !== 0 && !(startPrice! > 0)) ||
-      (endQuantity !== 0 && !(endPrice! > 0)) ||
-      fills.some((o) => !(fillPrice(o) > 0));
+    const startUnpriced = quantity !== 0 && !(startPrice! > 0);
+    const endUnpriced = endQuantity !== 0 && !(endPrice! > 0);
+    const missing = startUnpriced || endUnpriced || fills.some((o) => !(fillPrice(o) > 0));
     const flow = fills.reduce(
       (sum, o) => sum + (o.orderType === 'BUY' ? -1 : 1) * o.quantity * fillPrice(o),
       0,
@@ -96,7 +102,9 @@ export function performance(
       gain: missing ? null : endQuantity * (endPrice ?? 0) - quantity * (startPrice ?? 0) + flow,
     };
   });
-  if (periodTrades.some((o) => !symbolFor(o))) result.push({ symbol: 'Unknown stock', gain: null });
+  if (periodTrades.some((o) => !symbolFor(o))) {
+    result.push({ symbol: 'Unknown stock', gain: null });
+  }
   return result;
 }
 
@@ -122,9 +130,13 @@ export function activity(
     }
   }
   const days = [...volumes.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, v]) => v);
-  if (days.length < 21) return { label: 'Not enough volume history yet' };
+  if (days.length < 21) {
+    return { label: 'Not enough volume history yet' };
+  }
   const baseline = days.slice(-21, -1).reduce((a, b) => a + b, 0) / 20;
-  if (!(baseline > 0)) return { label: 'Volume unavailable' };
+  if (!(baseline > 0)) {
+    return { label: 'Volume unavailable' };
+  }
   const ratio = days.at(-1)! / baseline;
   return {
     label: ratio >= 1.5 ? 'Elevated activity' : ratio < 0.75 ? 'Quiet activity' : 'Usual activity',
@@ -156,12 +168,18 @@ function totalMetric(rows: readonly PerformanceRow[], label: string): Metric[] {
 /** Explains a period's result by naming the position that drove it; the amount is the metric. */
 export function periodStatement(rows: readonly PerformanceRow[], when: string): string {
   const { ranked, missing, total } = summarize(rows);
-  if (!rows.length) return 'No holdings to review yet.';
-  if (!ranked.length) return `Performance ${when} is unavailable.`;
+  if (!rows.length) {
+    return 'No holdings to review yet.';
+  }
+  if (!ranked.length) {
+    return `Performance ${when} is unavailable.`;
+  }
   const excluded = missing.length
     ? ` Excludes ${missing.join(', ')}, which ${missing.length === 1 ? 'has' : 'have'} no price history.`
     : '';
-  if (total === 0) return `Your holdings were unchanged ${when}.${excluded}`;
+  if (total === 0) {
+    return `Your holdings were unchanged ${when}.${excluded}`;
+  }
   const driver = total > 0 ? ranked[0] : ranked.at(-1)!;
   return `Your holdings ${total > 0 ? 'gained' : 'lost'} value ${when}, led by ${driver.symbol} (${signedDollars(driver.gain!)}).${excluded}`;
 }
@@ -183,7 +201,9 @@ export function dailyPerformanceCard(rows: readonly PerformanceRow[]): DuaCard {
 /** The position behind a period's result, or nothing when the period is flat or unavailable. */
 function driverOf(rows: readonly PerformanceRow[]): string | undefined {
   const { ranked, total } = summarize(rows);
-  if (!ranked.length || total === 0) return undefined;
+  if (!ranked.length || total === 0) {
+    return undefined;
+  }
   return (total > 0 ? ranked[0] : ranked.at(-1)!).symbol;
 }
 
@@ -203,21 +223,30 @@ export function periodPerformanceCard(
     title: 'Your performance',
     metricsFirst: true,
     metrics,
-    takeaway:
-      !week.length && !month.length
-        ? 'No holdings to review yet.'
-        : weekly && monthly
-          ? weekly === monthly
-            ? `${weekly} moved your holdings the most this week and this month.`
-            : `${weekly} moved your holdings the most this week, and ${monthly} this month.`
-          : weekly || monthly
-            ? `${weekly ?? monthly} moved your holdings the most ${weekly ? 'this week' : 'this month'}.`
-            : metrics.length
-              ? 'No change this week or this month.'
-              : 'Performance is unavailable.',
+    takeaway: periodTakeaway(!week.length && !month.length, weekly, monthly, metrics.length > 0),
     text: missing.length ? `Excludes ${missing.join(', ')} (no price history).` : '',
     detail: `${PERFORMANCE_DETAIL} The week starts on Monday and the month on the 1st.`,
   };
+}
+
+function periodTakeaway(
+  empty: boolean,
+  weekly: string | undefined,
+  monthly: string | undefined,
+  hasMetrics: boolean,
+): string {
+  if (empty) {
+    return 'No holdings to review yet.';
+  }
+  if (weekly && monthly) {
+    return weekly === monthly
+      ? `${weekly} moved your holdings the most this week and this month.`
+      : `${weekly} moved your holdings the most this week, and ${monthly} this month.`;
+  }
+  if (weekly || monthly) {
+    return `${weekly ?? monthly} moved your holdings the most ${weekly ? 'this week' : 'this month'}.`;
+  }
+  return hasMetrics ? 'No change this week or this month.' : 'Performance is unavailable.';
 }
 
 /**

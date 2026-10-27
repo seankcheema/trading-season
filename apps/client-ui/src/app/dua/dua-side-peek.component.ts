@@ -139,10 +139,14 @@ export class DuaSidePeekComponent {
   private timer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
-    if (!isPlatformBrowser(inject(PLATFORM_ID))) return;
+    if (!isPlatformBrowser(inject(PLATFORM_ID))) {
+      return;
+    }
     this.schedule(between(FIRST_PEEK_DELAY));
     inject(DestroyRef).onDestroy(() => {
-      if (this.timer !== null) clearTimeout(this.timer);
+      if (this.timer !== null) {
+        clearTimeout(this.timer);
+      }
     });
   }
 

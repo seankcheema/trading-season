@@ -172,6 +172,29 @@ describe('Dua performance', () => {
       ).takeaway,
     ).toBe('JPM moved your holdings the most this week, and MSFT this month.');
   });
+  it('names a driver for one period, a flat result, or nothing to review', () => {
+    const flat = [{ symbol: 'JPM', gain: 0 }];
+    const up = [{ symbol: 'JPM', gain: 5 }];
+    expect(periodPerformanceCard(up, flat).takeaway).toBe(
+      'JPM moved your holdings the most this week.',
+    );
+    expect(periodPerformanceCard(flat, up).takeaway).toBe(
+      'JPM moved your holdings the most this month.',
+    );
+    expect(periodPerformanceCard(flat, flat).takeaway).toBe('No change this week or this month.');
+    const unpriced = [{ symbol: 'JPM', gain: null }];
+    expect(periodPerformanceCard(unpriced, unpriced).takeaway).toBe('Performance is unavailable.');
+    expect(periodPerformanceCard([], []).takeaway).toBe('No holdings to review yet.');
+    expect(dailyPerformanceCard([]).takeaway).toBe('No holdings to review yet.');
+    expect(dailyPerformanceCard(flat).takeaway).toBe(
+      'Your holdings were unchanged since the open.',
+    );
+  });
+  it('reports a fill for a stock missing from the catalogue as unknown', () => {
+    const unknown = { ...fill('BUY', 50, 1), instrumentId: 99 };
+    const rows = performance([], [unknown], catalogue, 1, at, '2026-10-22', candles);
+    expect(rows).toEqual([{ symbol: 'Unknown stock', gain: null }]);
+  });
   it('ranks up to the requested number of gainers and losers', () => {
     const rows = [
       { symbol: 'A', gain: 5 },
@@ -265,6 +288,8 @@ describe('Dua performance', () => {
     const series = { points } as CandleSeries;
     expect(activity(series, at).label).toBe('Elevated activity');
     expect(activity({ points: points.slice(-20) } as CandleSeries, at).ratio).toBeUndefined();
+    const silent = { points: points.map((p) => ({ ...p, volume: 0 })) } as CandleSeries;
+    expect(activity(silent, at).label).toBe('Volume unavailable');
   });
   it('keeps versions deterministic and compact', () => {
     expect(insightVersion(['a', 1])).toBe(insightVersion(['a', 1]));

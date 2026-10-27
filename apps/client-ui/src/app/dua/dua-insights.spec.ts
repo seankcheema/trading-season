@@ -294,6 +294,11 @@ describe('Dua insights', () => {
     );
     expect(JSON.stringify(card)).not.toMatch(/"UP"|DOWN|OTHER/);
     expect(watchlistPulse(['UP'], quotes).takeaway).toBe('Most of your watchlist is rising.');
+    expect(watchlistPulse(['DOWN'], quotes).takeaway).toBe('Most of your watchlist is falling.');
+    expect(watchlistPulse(['FLAT'], [quote('FLAT', 100, 0)]).takeaway).toBe(
+      'Your watchlist is unchanged since the open.',
+    );
+    expect(watchlistPulse(['MISSING'], quotes).takeaway).toBe('Watchlist prices are unavailable.');
     expect(watchlistPulse([], quotes).takeaway).toBe('Your watchlist is empty.');
     expect(watchlistPulse(null, quotes).takeaway).toBe('Your watchlist is unavailable.');
   });

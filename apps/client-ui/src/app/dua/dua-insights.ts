@@ -442,20 +442,22 @@ export function watchlistPulse(
   const title = 'Your watchlist since the open';
   const detail =
     "Percent change from each watchlist stock's session open to its latest price. Your watchlist is shared by all of your trading accounts.";
-  if (symbols === null)
+  if (symbols === null) {
     return {
       title,
       takeaway: 'Your watchlist is unavailable.',
       text: 'Try again shortly.',
       detail,
     };
-  if (!symbols.length)
+  }
+  if (!symbols.length) {
     return {
       title,
       takeaway: 'Your watchlist is empty.',
       text: 'Star a stock to follow it here.',
       detail,
     };
+  }
   const moves = symbols.flatMap((symbol) => {
     const quote = quotes.find((q) => q.symbol === symbol);
     const change = quote ? percentChange(quote.price, quote.price - quote.change) : null;
@@ -476,15 +478,7 @@ export function watchlistPulse(
           { label: 'Falling', value: String(falling.length), tone: 'loss' },
         ]
       : [],
-    takeaway: !moves.length
-      ? 'Watchlist prices are unavailable.'
-      : rising.length > falling.length
-        ? 'Most of your watchlist is rising.'
-        : falling.length > rising.length
-          ? 'Most of your watchlist is falling.'
-          : rising.length
-            ? 'Your watchlist is evenly split between rising and falling stocks.'
-            : 'Your watchlist is unchanged since the open.',
+    takeaway: watchlistTakeaway(moves.length, rising.length, falling.length),
     text: !moves.length
       ? ''
       : `On average, your watchlist stocks moved ${signedPercent(average)} since the open.${
@@ -492,6 +486,21 @@ export function watchlistPulse(
         }`,
     detail,
   };
+}
+
+function watchlistTakeaway(priced: number, rising: number, falling: number): string {
+  if (!priced) {
+    return 'Watchlist prices are unavailable.';
+  }
+  if (rising > falling) {
+    return 'Most of your watchlist is rising.';
+  }
+  if (falling > rising) {
+    return 'Most of your watchlist is falling.';
+  }
+  return rising
+    ? 'Your watchlist is evenly split between rising and falling stocks.'
+    : 'Your watchlist is unchanged since the open.';
 }
 
 export function stockCards(

@@ -1,6 +1,7 @@
-import { forkJoin, of, catchError, switchMap, Subscription } from 'rxjs';
+import { forkJoin, of, catchError, switchMap, Observable, Subscription } from 'rxjs';
 import { MarketDataService, CandleSeries } from '../dashboard/market-data.service';
 import { OrderService } from '../dashboard/orders/order.service';
+import { InstrumentRef, OrderResult } from '../dashboard/orders/order.models';
 import {
   activity,
   dailyPerformanceCard,
@@ -212,9 +213,15 @@ export class DuaComponent {
     const ready = closed && this.forecastReady() && !this.speech.line();
     untracked(() => {
       const seen = this.session.forecastSeen;
-      if (symbol && !closed) seen.add(symbol);
-      if (!ready || this.forecastToast() !== symbol) this.forecastToast.set('');
-      if (!ready || seen.has(symbol)) return;
+      if (symbol && !closed) {
+        seen.add(symbol);
+      }
+      if (!ready || this.forecastToast() !== symbol) {
+        this.forecastToast.set('');
+      }
+      if (!ready || seen.has(symbol)) {
+        return;
+      }
       const timer = setTimeout(() => {
         seen.add(symbol);
         this.forecastToast.set(symbol);
@@ -235,15 +242,10 @@ export class DuaComponent {
     const line = this.speech.line();
     return this.hovered() || (!!line && line.tone !== 'error');
   });
-  protected readonly faceVisible = computed(
-    () =>
-      !this.session.minimized() ||
-      this.hasUpdates() ||
-      this.hovered() ||
-      this.focused() ||
-      !!this.speech.line() ||
-      this.waking(),
-  );
+  protected readonly faceVisible = computed(() => {
+    const engaged = this.hasUpdates() || this.hovered() || this.focused();
+    return !this.session.minimized() || engaged || !!this.speech.line() || this.waking();
+  });
   protected readonly greeting = computed(() =>
     duaGreeting(
       this.clock.currentMarketTimestamp(),
@@ -322,15 +324,13 @@ export class DuaComponent {
     () => {
       const accountId = this.account.selectedAccountId();
       const sessionId = this.clock.marketSessionId();
-      if (
-        accountId === null ||
-        sessionId === null ||
-        !this.marketDay() ||
+      const unsettled =
         this.account.status() !== 'ready' ||
         this.account.needsTermsAcceptance() ||
-        this.clock.clockUpdating()
-      )
+        this.clock.clockUpdating();
+      if (accountId === null || sessionId === null || !this.marketDay() || unsettled) {
         return [];
+      }
       const trend = this.trending();
       const risk = this.outlook();
       const summary = this.suggestion('week');
@@ -378,7 +378,9 @@ export class DuaComponent {
   // Relative to the simulation day, since that is the day the snapshot describes.
   protected readonly asOfLabel = computed(() => {
     const day = this.snapshotDate();
-    if (!day || !this.asOf()) return '';
+    if (!day || !this.asOf()) {
+      return '';
+    }
     const today = this.marketDay();
     const yesterday = today ? new Date(`${today}T12:00:00Z`) : null;
     yesterday?.setUTCDate(yesterday.getUTCDate() - 1);
@@ -404,17 +406,8 @@ export class DuaComponent {
   }
   protected readonly snapshotStillCurrent = computed(() => {
     const shown = this.displayedContext();
-    return (
-      !!shown &&
-      this.contexts().some(
-        (c) =>
-          c.insight === shown.insight &&
-          c.version === shown.version &&
-          c.accountId === shown.accountId &&
-          c.sessionId === shown.sessionId &&
-          c.symbol === shown.symbol,
-      )
-    );
+    const fields = ['insight', 'version', 'accountId', 'sessionId', 'symbol'] as const;
+    return !!shown && this.contexts().some((c) => fields.every((f) => c[f] === shown[f]));
   });
   private legacyOpened = false;
   private rows(period: 'daily' | 'week' | 'month') {
@@ -458,7 +451,7 @@ export class DuaComponent {
       buy && this.signals.signals() ? readingFor(this.signals.signals()!, buy.symbol, at) : null;
     const stormier = risk?.kind === 'ready' && risk.call === 'stormier';
     // One reason and one action per suggestion; the evidence is in the details.
-    if (review && worst)
+    if (review && worst) {
       return {
         title: 'What to consider',
         forecast: { record: trendForecastRecord(review.reading) },
@@ -467,7 +460,8 @@ export class DuaComponent {
         advice: 'Selling some shares limits further losses; avoid buying more until it turns up.',
         detail: `Selling is suggested only when a holding is both your largest loss for the period and its direction forecast points down for the next ${horizon} trading days; a loss alone is not a reason to sell.`,
       };
-    if (buy)
+    }
+    if (buy) {
       return {
         title: 'What to consider',
         forecast: { record: trendForecastRecord(buy.reading) },
@@ -476,6 +470,7 @@ export class DuaComponent {
         advice: `Start small and check its stock page first.${stormier ? ' Expect bigger price swings.' : ''}`,
         detail: `${buy.symbol}'s direction forecast points up for the next ${horizon} trading days, and it is ${this.momentumPhrase(buy.reading.momentum)}. Upward opportunities are ranked by recent momentum.`,
       };
+    }
     return {
       title: 'What to consider',
       takeaway: 'Hold your current positions.',
@@ -523,16 +518,7 @@ export class DuaComponent {
     );
     // The trend call is null on a week whose move is too small against the stock's usual
     // swings to call; Dua says so instead of turning it into a buy, sell or hold.
-    const action =
-      trend?.kind !== 'ready'
-        ? 'Not enough forecast history yet.'
-        : trend.call === null
-          ? `No clear direction for ${symbol}.`
-          : trend.call === 'up'
-            ? `Consider buying ${symbol}.`
-            : owned
-              ? `Consider selling ${symbol}.`
-              : `Hold off on buying ${symbol}.`;
+    const action = this.trendAction(symbol, trend, owned);
     const swing =
       risk?.kind === 'ready'
         ? `Expect ${risk.call === 'stormier' ? 'bigger' : 'smaller'} price swings.`
@@ -567,16 +553,7 @@ export class DuaComponent {
             : trend.call === null
               ? `${symbol}'s recent move is too small against its usual swings to call.`
               : `The next ${horizon} trading days lean ${trend.call === 'up' ? 'upward' : 'downward'}.`,
-        detail:
-          trend?.kind === 'ready' && trend.call === null
-            ? `This forecast calls ${symbol}'s direction over the next ${horizon} trading days only when its recent move stands out from its usual swings. Right now it does not, so it makes no call.`
-            : trend?.kind === 'ready'
-              ? `This forecast estimates whether ${symbol}'s price will be higher or lower ${horizon} trading days from now, based on how it has been moving.${
-                  trendChance >= 0.5
-                    ? ` It gives about a ${percent(trendChance)} chance the price will be ${trend.call === 'up' ? 'higher' : 'lower'}.`
-                    : ''
-                }`
-              : `There is not enough price history for ${symbol} to make a forecast yet.`,
+        detail: this.trendDetail(symbol, trend, horizon, trendChance),
       },
       {
         title: 'Recent activity',
@@ -641,13 +618,8 @@ export class DuaComponent {
       this.lastTime = time;
     });
     effect(() => {
-      if (
-        this.openOutlook() &&
-        !this.legacyOpened &&
-        !this.historyLoading() &&
-        this.orders.historyStatus() === 'ready' &&
-        this.contexts().length
-      )
+      const historyReady = !this.historyLoading() && this.orders.historyStatus() === 'ready';
+      if (this.openOutlook() && !this.legacyOpened && historyReady && this.contexts().length) {
         untracked(() => {
           this.legacyOpened = true;
           this.select('stock');
@@ -655,6 +627,7 @@ export class DuaComponent {
           this.detailsOpen.set(2);
           this.session.minimized.set(false);
         });
+      }
     });
     effect(() => {
       const active = this.activeCard();
@@ -662,13 +635,15 @@ export class DuaComponent {
       untracked(() => {
         this.infoOpen.set(null);
         // A details popover belongs to its card: moving to another card closes it.
-        if (this.detailsOpen() !== active) this.detailsOpen.set(null);
+        if (this.detailsOpen() !== active) {
+          this.detailsOpen.set(null);
+        }
       });
     });
     effect(() => {
       const symbol = this.symbol();
       const raised = this.raised();
-      if (symbol)
+      if (symbol) {
         untracked(() => {
           this.legacyOpened = false;
           // The dashboard's order dialog, which Dua accompanies, opens it every time. A stock
@@ -679,6 +654,7 @@ export class DuaComponent {
             this.session.minimized.set(false);
           }
         });
+      }
     });
     effect(() => {
       const ready =
@@ -694,33 +670,21 @@ export class DuaComponent {
       const symbol = this.symbol();
       const open = symbol ? true : !this.session.minimized();
       untracked(() => {
-        if (!open && !symbol) return;
+        if (!open && !symbol) {
+          return;
+        }
         this.historyRequest?.unsubscribe();
         this.history.set([]);
         this.historyLoading.set(false);
-        if (!ready || accountId === null || sessionId === null || !day) return;
+        if (!ready || accountId === null || sessionId === null || !day) {
+          return;
+        }
         this.historyLoading.set(true);
         this.historyRequest = forkJoin([this.orders.loadOrders(false), this.orders.instruments()])
           .pipe(
-            switchMap(([orders, catalogue]) => {
-              const symbols = new Set(
-                [...this.account.selectedHoldings().map((h) => h.symbol), symbol].filter(Boolean),
-              );
-              orders
-                .filter((o) => o.accountId === accountId && o.status === 'FILLED')
-                .forEach((o) => {
-                  const i = catalogue.find((i) => i.instrumentId === o.instrumentId);
-                  const symbol = i?.simulatedStockSymbol ?? i?.ticker;
-                  if (symbol) symbols.add(symbol);
-                });
-              return symbols.size
-                ? forkJoin(
-                    [...symbols].map((symbol) =>
-                      this.market.candles(sessionId, symbol, '1Y').pipe(catchError(() => of(null))),
-                    ),
-                  )
-                : of([]);
-            }),
+            switchMap(([orders, catalogue]) =>
+              this.historySeries(orders, catalogue, accountId, sessionId, symbol),
+            ),
           )
           .subscribe({
             next: (series) => {
@@ -738,17 +702,13 @@ export class DuaComponent {
     afterRenderEffect(() => {
       const snapshot = this.displayedContext();
       const open = !this.session.minimized();
-      if (
-        snapshot &&
-        open &&
-        !this.loading() &&
-        this.cards().length &&
-        this.snapshotStillCurrent() &&
-        typeof document !== 'undefined' &&
-        document.visibilityState === 'visible'
-      ) {
+      const shown = !this.loading() && this.cards().length > 0 && this.snapshotStillCurrent();
+      const visible = typeof document !== 'undefined' && document.visibilityState === 'visible';
+      if (snapshot && open && shown && visible) {
         untracked(() => {
-          if (this.session.unread(snapshot)) this.session.viewedSummary(snapshot);
+          if (this.session.unread(snapshot)) {
+            this.session.viewedSummary(snapshot);
+          }
         });
       }
     });
@@ -809,13 +769,17 @@ export class DuaComponent {
     effect(() => {
       const warning = this.idle.warning();
       untracked(() => {
-        if (warning && this.idleLine === null) {
+        // Nothing to do when the line already matches the warning.
+        if (warning === (this.idleLine !== null)) {
+          return;
+        }
+        if (warning) {
           this.idleLine = this.speech.say(IDLE_WARNING_LINE, 'info', {
             duration: null,
             mood: 'sleepy',
           });
-        } else if (!warning && this.idleLine !== null) {
-          this.speech.dismiss(this.idleLine);
+        } else {
+          this.speech.dismiss(this.idleLine!);
           this.idleLine = null;
         }
       });
@@ -829,6 +793,38 @@ export class DuaComponent {
         this.speech.dismiss(this.idleLine);
       }
     });
+  }
+
+  // A year of candles for every stock the account holds, has filled, or has open; null where a
+  // stock's request fails.
+  private historySeries(
+    orders: OrderResult[],
+    catalogue: InstrumentRef[],
+    accountId: number,
+    sessionId: number,
+    open: string,
+  ): Observable<(CandleSeries | null)[]> {
+    const symbols = new Set(
+      [...this.account.selectedHoldings().map((h) => h.symbol), open].filter(Boolean),
+    );
+    for (const order of orders) {
+      if (order.accountId !== accountId || order.status !== 'FILLED') {
+        continue;
+      }
+      const instrument = catalogue.find((i) => i.instrumentId === order.instrumentId);
+      const symbol = instrument?.simulatedStockSymbol ?? instrument?.ticker;
+      if (symbol) {
+        symbols.add(symbol);
+      }
+    }
+    if (!symbols.size) {
+      return of([]);
+    }
+    return forkJoin(
+      [...symbols].map((symbol) =>
+        this.market.candles(sessionId, symbol, '1Y').pipe(catchError(() => of(null))),
+      ),
+    );
   }
 
   // Sets a move's class for as long as its animation runs.
@@ -867,6 +863,43 @@ export class DuaComponent {
    * move over the last days beside its usual size, both from the volatility signal file, behind
    * an info button. Measured, not forecast.
    */
+  private trendAction(
+    symbol: string,
+    trend: ReturnType<typeof trendReadingFor> | null,
+    owned: boolean,
+  ): string {
+    if (trend?.kind !== 'ready') {
+      return 'Not enough forecast history yet.';
+    }
+    if (trend.call === null) {
+      return `No clear direction for ${symbol}.`;
+    }
+    if (trend.call === 'up') {
+      return `Consider buying ${symbol}.`;
+    }
+    return owned ? `Consider selling ${symbol}.` : `Hold off on buying ${symbol}.`;
+  }
+
+  /** The trend card's View Details text; `chance` is the model's chance for the shown call. */
+  private trendDetail(
+    symbol: string,
+    trend: ReturnType<typeof trendReadingFor> | null,
+    horizon: number,
+    chance: number,
+  ): string {
+    if (trend?.kind !== 'ready') {
+      return `There is not enough price history for ${symbol} to make a forecast yet.`;
+    }
+    if (trend.call === null) {
+      return `This forecast calls ${symbol}'s direction over the next ${horizon} trading days only when its recent move stands out from its usual swings. Right now it does not, so it makes no call.`;
+    }
+    const odds =
+      chance >= 0.5
+        ? ` It gives about a ${Math.round(chance * 100)}% chance the price will be ${trend.call === 'up' ? 'higher' : 'lower'}.`
+        : '';
+    return `This forecast estimates whether ${symbol}'s price will be higher or lower ${horizon} trading days from now, based on how it has been moving.${odds}`;
+  }
+
   private swingsPhrase(
     symbol: string,
     risk: ReturnType<typeof readingFor> | null,
@@ -980,14 +1013,10 @@ export class DuaComponent {
     if (this.session.minimized()) {
       return;
     }
-    const panel = this.panel()?.nativeElement;
-    const launcher = this.launcher()?.nativeElement;
-    if (
-      (panel && path.includes(panel)) ||
-      (launcher && path.includes(launcher)) ||
-      inside('forecast-toast') ||
-      path.some((el) => el instanceof Element && el.hasAttribute('data-opens-dua'))
-    ) {
+    const own = [this.panel()?.nativeElement, this.launcher()?.nativeElement];
+    const onDua = own.some((el) => !!el && path.includes(el));
+    const opensDua = path.some((el) => el instanceof Element && el.hasAttribute('data-opens-dua'));
+    if (onDua || inside('forecast-toast') || opensDua) {
       return;
     }
     // Leave focus on the control the user clicked, rather than returning to the launcher.
