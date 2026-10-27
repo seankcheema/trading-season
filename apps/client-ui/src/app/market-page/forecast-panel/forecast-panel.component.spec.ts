@@ -39,15 +39,10 @@ const outlookDays = Array.from({ length: 30 }, (_, i) => ({
 
 @Component({
   imports: [ForecastPanelComponent],
-  template: `<app-forecast-panel
-    [symbol]="symbol()"
-    marketTimestamp="2026-01-05T15:05:00Z"
-    (closed)="closes = closes + 1"
-  />`,
+  template: `<app-forecast-panel [symbol]="symbol()" marketTimestamp="2026-01-05T15:05:00Z" />`,
 })
 class HostComponent {
   readonly symbol = signal('AAPL');
-  closes = 0;
 }
 
 describe('ForecastPanelComponent', () => {
@@ -99,9 +94,7 @@ describe('ForecastPanelComponent', () => {
 
   it('shows both forecasts, their records and what each is scored against', () => {
     const { el, text } = setup();
-    const drawer = el.querySelector('app-forecast-panel')!;
-    expect(drawer.getAttribute('role')).toBe('complementary');
-    expect(drawer.getAttribute('aria-label')).toBe('AAPL forecast');
+    expect(el.querySelector('h2')!.textContent!.trim()).toBe('AAPL forecast');
     expect(text('forecast-panel')).toContain('Model forecast');
     expect(text('forecast-panel')).toContain('next 5 trading days');
 
@@ -152,29 +145,6 @@ describe('ForecastPanelComponent', () => {
     (scoring.querySelector('summary') as HTMLElement).click();
     fixture.detectChanges();
     expect(scoring.open).toBe(true);
-  });
-
-  it('comes into view and takes focus when it opens', () => {
-    const scrollIntoView = vi.fn();
-    const original = Element.prototype.scrollIntoView;
-    Element.prototype.scrollIntoView = scrollIntoView;
-    onTestFinished(() => {
-      Element.prototype.scrollIntoView = original;
-    });
-    const { el } = setup();
-    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
-    expect(scrollIntoView.mock.contexts[0]).toBe(el.querySelector('app-forecast-panel'));
-    expect(document.activeElement?.getAttribute('aria-label')).toBe('Close forecast');
-  });
-
-  it('closes on its button and on Escape', () => {
-    const { fixture, el } = setup();
-    (el.querySelector('[aria-label="Close forecast"]') as HTMLButtonElement).click();
-    expect(fixture.componentInstance.closes).toBe(1);
-    el.querySelector('app-forecast-panel')!.dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
-    );
-    expect(fixture.componentInstance.closes).toBe(2);
   });
 
   it('says so while loading and for a stock no forecast covers', () => {

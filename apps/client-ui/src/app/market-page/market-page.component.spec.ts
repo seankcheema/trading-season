@@ -621,70 +621,87 @@ describe('MarketPageComponent', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="market-outlook"]')).toBeNull();
   });
 
-  it('opens the forecast drawer beside the chart, over the tools, and closes it', async () => {
-    vi.useFakeTimers();
-    try {
-      const fixture = await setup('aapl');
-      const el = fixture.nativeElement as HTMLElement;
-      const button = el.querySelector('.forecast-toggle') as HTMLButtonElement;
-      expect(button.getAttribute('aria-pressed')).toBe('false');
-      expect(el.querySelector('app-forecast-panel')).toBeNull();
-
-      button.click();
-      fixture.detectChanges();
-      expect(button.getAttribute('aria-pressed')).toBe('true');
-      const drawer = el.querySelector('app-forecast-panel')!;
-      expect(drawer.closest('.tools-column')).not.toBeNull();
-      expect(drawer.closest('.chart-stage')).toBeNull();
-      // The tools it covers are out of reach until it closes.
-      expect(el.querySelector('.insight-panel')!.hasAttribute('inert')).toBe(true);
-
-      (el.querySelector('[aria-label="Close forecast"]') as HTMLButtonElement).click();
-      fixture.detectChanges();
-      vi.runAllTimers();
-      expect(el.querySelector('app-forecast-panel')).toBeNull();
-      expect(el.querySelector('.insight-panel')!.hasAttribute('inert')).toBe(false);
-      expect(document.activeElement).toBe(button);
-      expect(navigate).not.toHaveBeenCalledWith(
-        [],
-        expect.objectContaining({ queryParams: { forecast: null } }),
-      );
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it('shows hidden tools for the forecast drawer, and hides them again when it closes', async () => {
+  it('shows the forecast as a market tools tab, from the tab or the chart Forecast button', async () => {
     const fixture = await setup('aapl');
     const el = fixture.nativeElement as HTMLElement;
+    const tabs = () =>
+      [...el.querySelectorAll('[role=tablist][aria-label="Instrument tools"] [role=tab]')].map(
+        (tab) =>
+          `${tab.textContent!.trim()}${tab.getAttribute('aria-selected') === 'true' ? '*' : ''}`,
+      );
+    const tab = (name: string) =>
+      [...el.querySelectorAll('[role=tab]')].find(
+        (t) => t.textContent!.trim() === name,
+      ) as HTMLButtonElement;
+    const button = el.querySelector('.forecast-toggle') as HTMLButtonElement;
+    expect(tabs()).toEqual(['Trading*', 'Recent Orders', 'Forecast']);
+    expect(el.querySelector('app-forecast-panel')).toBeNull();
+    expect(button.getAttribute('aria-pressed')).toBe('false');
+
+    tab('Forecast').click();
+    fixture.detectChanges();
+    expect(tabs()).toEqual(['Trading', 'Recent Orders', 'Forecast*']);
+    const panel = el.querySelector('[role=tabpanel][aria-label="Forecast"] app-forecast-panel');
+    expect(panel).not.toBeNull();
+    expect(panel!.closest('.chart-stage')).toBeNull();
+    expect(button.getAttribute('aria-pressed')).toBe('true');
+
+    // The chart's button closes it back to the tab before, and opens it from any tab.
+    tab('Recent Orders').click();
+    fixture.detectChanges();
+    button.click();
+    fixture.detectChanges();
+    expect(tabs()).toEqual(['Trading', 'Recent Orders', 'Forecast*']);
+    button.click();
+    fixture.detectChanges();
+    expect(tabs()).toEqual(['Trading', 'Recent Orders*', 'Forecast']);
+    expect(el.querySelector('app-forecast-panel')).toBeNull();
+    expect(button.getAttribute('aria-pressed')).toBe('false');
+    expect(navigate).not.toHaveBeenCalledWith(
+      [],
+      expect.objectContaining({ queryParams: { forecast: null } }),
+    );
+  });
+
+  it('shows hidden tools for the forecast, and hides them again when the button closes it', async () => {
+    const fixture = await setup('aapl');
+    const el = fixture.nativeElement as HTMLElement;
+    const button = el.querySelector('.forecast-toggle') as HTMLButtonElement;
+    const collapsed = () => el.querySelector('.market-grid')!.classList.contains('tools-collapsed');
     (el.querySelector('[aria-label="Hide market tools"]') as HTMLButtonElement).click();
     fixture.detectChanges();
-    expect(el.querySelector('.market-grid')!.classList).toContain('tools-collapsed');
+    expect(collapsed()).toBe(true);
 
-    (el.querySelector('.forecast-toggle') as HTMLButtonElement).click();
+    button.click();
     fixture.detectChanges();
-    expect(el.querySelector('.market-grid')!.classList).not.toContain('tools-collapsed');
+    expect(collapsed()).toBe(false);
     expect(el.querySelector('.tools-column app-forecast-panel')).not.toBeNull();
-
-    (el.querySelector('[aria-label="Close forecast"]') as HTMLButtonElement).click();
+    button.click();
     fixture.detectChanges();
-    expect(el.querySelector('.market-grid')!.classList).toContain('tools-collapsed');
+    expect(collapsed()).toBe(true);
+    expect(button.getAttribute('aria-pressed')).toBe('false');
 
     // Tools that were showing stay showing.
     (el.querySelector('[aria-label="Open market tools"]') as HTMLButtonElement).click();
     fixture.detectChanges();
-    (el.querySelector('.forecast-toggle') as HTMLButtonElement).click();
+    button.click();
     fixture.detectChanges();
-    (el.querySelector('[aria-label="Close forecast"]') as HTMLButtonElement).click();
+    button.click();
     fixture.detectChanges();
-    expect(el.querySelector('.market-grid')!.classList).not.toContain('tools-collapsed');
+    expect(collapsed()).toBe(false);
   });
 
-  it('opens the forecast drawer from a ?forecast=open link and drops the parameter on close', async () => {
+  it('opens the Forecast tab from a ?forecast=open link and drops the parameter on leaving it', async () => {
     const fixture = await setup('aapl', '', '', [], {}, '', { forecast: 'open' });
     const el = fixture.nativeElement as HTMLElement;
-    expect(el.querySelector('app-forecast-panel')).not.toBeNull();
-    (el.querySelector('[aria-label="Close forecast"]') as HTMLButtonElement).click();
+    expect(
+      el.querySelector('[role=tabpanel][aria-label="Forecast"] app-forecast-panel'),
+    ).not.toBeNull();
+    (
+      [...el.querySelectorAll('[role=tab]')].find(
+        (t) => t.textContent!.trim() === 'Trading',
+      ) as HTMLButtonElement
+    ).click();
     fixture.detectChanges();
     expect(el.querySelector('app-forecast-panel')).toBeNull();
     expect(navigate).toHaveBeenCalledWith(
@@ -713,12 +730,16 @@ describe('MarketPageComponent', () => {
     expect(charts.every((chart) => chart.componentInstance.liveTailing())).toBe(true);
   });
 
-  it('offers Trading and Recent Orders in the market tools', async () => {
+  it('offers Trading, Recent Orders and Forecast in the market tools', async () => {
     const fixture = await setup();
     const tabs = Array.from(
       fixture.nativeElement.querySelectorAll('[role="tab"]'),
     ) as HTMLButtonElement[];
-    expect(tabs.map((tab) => tab.textContent?.trim())).toEqual(['Trading', 'Recent Orders']);
+    expect(tabs.map((tab) => tab.textContent?.trim())).toEqual([
+      'Trading',
+      'Recent Orders',
+      'Forecast',
+    ]);
     expect(tabs[0].getAttribute('aria-selected')).toBe('true');
     tabs[1].click();
     fixture.detectChanges();
