@@ -29,6 +29,10 @@ export interface DuaCard {
   metricsFirst?: boolean;
   /** Gives the description the same weight as the takeaway. */
   emphasizeText?: boolean;
+  /** Sets a short takeaway larger, as the card's one statement. */
+  emphasizeTakeaway?: boolean;
+  /** The figures behind the takeaway, kept out of it and shown from an info button beside it. */
+  aside?: { label: string; text: string };
   /** What the user could do about the takeaway, shown after the description. */
   advice?: string;
   /** A position on a two-ended scale, `value` from 0 (left) to 1 (right). */
@@ -50,9 +54,9 @@ export interface DuaCard {
 }
 
 /**
- * A forecast's record over closed weeks, as forecast cards and the Forecast tab show it: a
- * frequency with one denominator ("right 15 of last 20 calls"), how often it made a call when it
- * can decline to, and the simple pattern it is measured against over its own closed weeks.
+ * A forecast's record over closed weeks, as forecast cards show it: a
+ * frequency with one denominator ("right 15 of last 20 calls") and how often it made a call when
+ * it can decline to.
  */
 export interface ForecastRecord {
   hits: number;
@@ -63,7 +67,6 @@ export interface ForecastRecord {
   /** Whether the forecast is making a call now; a confidence score reads oddly on "no call". */
   called: boolean;
   coverage?: string;
-  baseline?: { label: string; hits: number; total: number };
 }
 
 /** The strong-trend read's record on a stock. Undefined before any call has closed. */
@@ -72,8 +75,6 @@ export function trendForecastRecord(reading: {
   signalHits: number;
   signalCalls: number;
   signalWeeks: number;
-  ruleHits: number;
-  ruleDays: number;
 }): ForecastRecord | undefined {
   if (!reading.signalCalls) {
     return undefined;
@@ -85,15 +86,12 @@ export function trendForecastRecord(reading: {
     percent: Math.round((reading.signalHits / reading.signalCalls) * 100),
     called: reading.call !== null,
     coverage: `Called ${reading.signalCalls} of the last ${reading.signalWeeks} weeks; it makes no call on weeks too weak to read.`,
-    baseline: reading.ruleDays
-      ? { label: 'Keeps going the same way', hits: reading.ruleHits, total: reading.ruleDays }
-      : undefined,
   };
 }
 
 /**
- * The volatility outlook's record: the leading reader's hits over its last closed weeks, beside
- * the other reader's. Undefined before any week has closed.
+ * The volatility outlook's record: the leading reader's hits over its last closed weeks.
+ * Undefined before any week has closed.
  */
 export function outlookForecastRecord(reading: {
   source: 'model' | 'rule';
@@ -108,17 +106,7 @@ export function outlookForecastRecord(reading: {
     return undefined;
   }
   const hits = model ? reading.modelHits : reading.ruleHits;
-  const other = model
-    ? { label: 'Like last week', hits: reading.ruleHits, total: reading.ruleDays }
-    : { label: 'The model alone', hits: reading.modelHits, total: reading.modelDays };
-  return {
-    hits,
-    total,
-    unit: 'weeks',
-    percent: Math.round((hits / total) * 100),
-    called: true,
-    baseline: other.total ? other : undefined,
-  };
+  return { hits, total, unit: 'weeks', percent: Math.round((hits / total) * 100), called: true };
 }
 
 /** The takeaway split around its highlighted phrase, or null when it has none to colour. */

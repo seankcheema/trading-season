@@ -1,4 +1,7 @@
-/* On wide screens, a label beside the closed launcher says what Dua is for. */
+/*
+ * On wide screens, a label beside the closed launcher says what Dua is for. New insights are
+ * counted by the launcher's red badge, as on a stock page, not in the label.
+ */
 .launcher-pill {
   position: absolute;
   top: 50%;
@@ -17,15 +20,8 @@
   white-space: nowrap;
   transform: translateY(-50%);
 }
-.launcher-pill-count {
-  color: var(--primary);
-  font-size: 12px;
-}
 @media (min-width: 1024px) {
   .launcher-pill {
     display: inline-flex;
-  }
-  .dua-launcher.has-pill .notification-count {
-    display: none;
   }
 }

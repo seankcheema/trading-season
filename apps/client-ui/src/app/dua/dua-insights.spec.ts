@@ -298,15 +298,13 @@ describe('Dua insights', () => {
     expect(watchlistPulse(null, quotes).takeaway).toBe('Your watchlist is unavailable.');
   });
 
-  it('keeps a forecast record as a confidence score, how often it called, and its baseline', () => {
+  it('keeps a forecast record as a confidence score and how often it called', () => {
     expect(
       trendForecastRecord({
         call: 'down',
         signalHits: 12,
         signalCalls: 16,
         signalWeeks: 24,
-        ruleHits: 11,
-        ruleDays: 20,
       }),
     ).toEqual({
       hits: 12,
@@ -315,7 +313,6 @@ describe('Dua insights', () => {
       percent: 75,
       called: true,
       coverage: 'Called 16 of the last 24 weeks; it makes no call on weeks too weak to read.',
-      baseline: { label: 'Keeps going the same way', hits: 11, total: 20 },
     });
     expect(
       trendForecastRecord({
@@ -323,8 +320,6 @@ describe('Dua insights', () => {
         signalHits: 0,
         signalCalls: 0,
         signalWeeks: 3,
-        ruleHits: 0,
-        ruleDays: 3,
       }),
     ).toBeUndefined();
     const outlook = { modelHits: 15, modelDays: 20, ruleHits: 12, ruleDays: 20 };
@@ -334,7 +329,6 @@ describe('Dua insights', () => {
       unit: 'weeks',
       percent: 75,
       called: true,
-      baseline: { label: 'Like last week', hits: 12, total: 20 },
     });
     expect(outlookForecastRecord({ ...outlook, source: 'rule' })).toEqual({
       hits: 12,
@@ -342,7 +336,6 @@ describe('Dua insights', () => {
       unit: 'weeks',
       percent: 60,
       called: true,
-      baseline: { label: 'The model alone', hits: 15, total: 20 },
     });
     expect(outlookForecastRecord({ ...outlook, modelDays: 0, source: 'model' })).toBeUndefined();
     expect(
@@ -351,8 +344,6 @@ describe('Dua insights', () => {
         signalHits: 8,
         signalCalls: 10,
         signalWeeks: 14,
-        ruleHits: 9,
-        ruleDays: 14,
       })?.called,
     ).toBe(false);
   });

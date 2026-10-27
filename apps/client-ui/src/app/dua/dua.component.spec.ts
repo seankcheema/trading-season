@@ -241,9 +241,13 @@ describe('Dua panel', () => {
     const { fixture, click } = setup();
     const pill = () => fixture.nativeElement.querySelector('.launcher-pill') as HTMLElement | null;
     expect(session.minimized()).toBe(true);
-    expect(pill()?.textContent).toContain('Ask Dua');
+    expect(pill()?.textContent?.trim()).toBe('Ask Dua');
     expect(pill()?.getAttribute('aria-hidden')).toBe('true');
     expect(fixture.nativeElement.querySelector('.dua-launcher').classList).toContain('has-pill');
+    // New insights are counted by the red badge, as on a stock page, not in the label.
+    expect(fixture.nativeElement.querySelector('.notification-count')?.textContent?.trim()).toBe(
+      '2',
+    );
 
     click('Dua insights');
     expect(pill()).toBeNull();
@@ -255,99 +259,40 @@ describe('Dua panel', () => {
     click('Minimize Dua');
     expect(pill()).toBeNull();
   });
-  it('resizes freely from its corner grip, by drag or keys, and resets on double-click or Home', () => {
+  it('keeps a fixed size, with no resize grip', () => {
     const { fixture, click } = setup();
     click('Dua insights');
-    const el = fixture.nativeElement as HTMLElement;
-    const panel = () => el.querySelector('.dua-panel') as HTMLElement;
-    const grip = () => el.querySelector('.resize-grip') as HTMLButtonElement | null;
-    const pointer = (type: string, x: number, y: number) =>
-      grip()!.dispatchEvent(
-        new MouseEvent(type, { clientX: x, clientY: y, button: 0, bubbles: true }),
-      );
-    expect(grip()?.getAttribute('aria-label')).toBe('Resize Dua');
-    expect(session.size()).toBeNull();
-
-    // Anchored bottom-right: dragging up and to the left grows the panel.
-    pointer('pointerdown', 900, 600);
-    pointer('pointermove', 400, 100);
-    pointer('pointerup', 400, 100);
-    fixture.detectChanges();
-    const dragged = session.size()!;
-    expect(dragged.width).toBeGreaterThanOrEqual(500);
-    expect(dragged.height).toBeGreaterThanOrEqual(500);
-    expect(panel().style.width).toBe(`${dragged.width}px`);
-    expect(panel().style.height).toBe(`${dragged.height}px`);
-    expect(panel().classList).toContain('resized');
-
-    // Never smaller than its minimum.
-    pointer('pointerdown', 400, 100);
-    pointer('pointermove', 2000, 2000);
-    pointer('pointerup', 2000, 2000);
-    expect(session.size()).toEqual({ width: 320, height: 360 });
-
-    grip()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
-    expect(session.size()!.height).toBeGreaterThanOrEqual(360);
-    grip()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
-    fixture.detectChanges();
-    expect(session.size()).toBeNull();
-    expect(panel().style.width).toBe('');
-
-    pointer('pointerdown', 900, 600);
-    pointer('pointermove', 700, 400);
-    pointer('pointerup', 700, 400);
-    grip()!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
-    expect(session.size()).toBeNull();
-  });
-  it('scales its text with a resized panel, within bounds, and not at its default size', () => {
-    let report: (width: number) => void = () => undefined;
-    vi.stubGlobal(
-      'ResizeObserver',
-      class {
-        constructor(callback: (entries: { contentRect: { width: number } }[]) => void) {
-          report = (width) => callback([{ contentRect: { width } }]);
-        }
-        observe() {}
-        disconnect() {}
-      },
-    );
-    const { fixture, click } = setup();
-    click('Dua insights');
-    const panel = () => fixture.nativeElement.querySelector('.dua-panel') as HTMLElement;
-    const scale = () => panel().style.getPropertyValue('--dua-text-scale');
-    const resize = (width: number) => {
-      session.size.set({ width, height: 600 });
-      report(width);
-      fixture.detectChanges();
-    };
-
-    report(630);
-    fixture.detectChanges();
-    expect(scale()).toBe('1');
-
-    resize(630);
-    expect(scale()).toBe('1.4');
-    resize(483);
-    expect(scale()).toBe('1.15');
-    resize(800);
-    expect(scale()).toBe('1.4');
-    resize(320);
-    expect(scale()).toBe('0.9');
-
-    session.size.set(null);
-    fixture.detectChanges();
-    expect(scale()).toBe('1');
-  });
-  it('keeps its compact size and no grip beside the order dialog', () => {
-    const { fixture, click } = setup();
-    click('Dua insights');
-    session.size.set({ width: 600, height: 600 });
-    fixture.componentRef.setInput('raised', true);
-    fixture.detectChanges();
     const el = fixture.nativeElement as HTMLElement;
     expect(el.querySelector('.resize-grip')).toBeNull();
-    expect((el.querySelector('.dua-panel') as HTMLElement).style.width).toBe('');
-    expect(el.querySelector('.dua-panel')!.classList).not.toContain('resized');
+    expect((el.querySelector('.dua-panel') as HTMLElement).getAttribute('style')).toBeNull();
+  });
+  it('opens on This Stock from the chart Forecast button, and closes when it shows already', () => {
+    const { fixture } = setup();
+    fixture.componentRef.setInput('symbol', 'AAPL');
+    fixture.detectChanges();
+    const dua = fixture.componentInstance;
+    const el = fixture.nativeElement as HTMLElement;
+    session.minimized.set(true);
+    fixture.detectChanges();
+    expect(dua.stockOpen()).toBe(false);
+
+    // The button sits outside Dua; its click is not taken for one that closes Dua.
+    const opener = document.createElement('button');
+    opener.setAttribute('data-opens-dua', '');
+    document.body.append(opener);
+    onTestFinished(() => opener.remove());
+    opener.addEventListener('click', () => dua.toggleStock());
+    opener.click();
+    fixture.detectChanges();
+    expect(session.minimized()).toBe(false);
+    expect(dua.stockOpen()).toBe(true);
+    expect(el.querySelector('.dua-header h2')?.textContent?.trim()).toBe('This Stock');
+    expect(el.querySelector('.insight-card:not(.inactive)')!.classList).toContain('forecast-card');
+
+    opener.click();
+    fixture.detectChanges();
+    expect(session.minimized()).toBe(true);
+    expect(dua.stockOpen()).toBe(false);
   });
   it('rises over a dialog it accompanies and keeps Escape from also closing that dialog', () => {
     const { fixture } = setup();
@@ -398,12 +343,30 @@ describe('Dua panel', () => {
     expect(active().querySelector('.details-pop')).toBeNull();
     expect(session.minimized()).toBe(false);
     click('Next insight');
-    expect(active().textContent).toContain(
-      'AAPL is swinging more than usual: a typical daily move of 2.0% over the last 5 trading days, against a usual 1.1%.',
+    // A short, larger statement; the figures behind it open from an info button at its end.
+    const headline = active().querySelector('.guidance-headline') as HTMLElement;
+    expect(headline.textContent!.replace(/\s+/g, ' ').trim()).toBe(
+      'AAPL is swinging more than usual.',
     );
+    expect(headline.classList).toContain('prominent');
     expect(active().querySelector('.swing-word.swing-more')?.textContent).toBe(
       'swinging more than usual',
     );
+    const figures = headline.querySelector('.info-button') as HTMLButtonElement;
+    expect(figures.getAttribute('aria-label')).toBe('How big the swings are');
+    expect(active().querySelector('.info-pop')).toBeNull();
+    figures.click();
+    fixture.detectChanges();
+    const aside = active().querySelector('.info-pop') as HTMLElement;
+    expect(aside.textContent!.trim()).toBe(
+      'A typical daily move of 2.0% over the last 5 trading days, against a usual 1.1%.',
+    );
+    expect(aside.closest('.card-content')).toBeNull();
+    expect(figures.getAttribute('aria-expanded')).toBe('true');
+    figures.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    fixture.detectChanges();
+    expect(active().querySelector('.info-pop')).toBeNull();
+    expect(session.minimized()).toBe(false);
     click('Next insight');
     expect(active().textContent).toContain(
       "About a 62% chance AAPL's price moves more than usual over the next 5 trading days",
@@ -520,7 +483,7 @@ describe('Dua panel', () => {
     const stock = el.querySelector('.choices button') as HTMLButtonElement;
     expect(stock.getAttribute('aria-label')).toBe('This Stock');
     expect(stock.querySelector('small')!.textContent!.replace(/\s+/g, ' ').trim()).toBe(
-      'Forecast · What to consider next',
+      'Forecast What to consider next',
     );
     expect(stock.getAttribute('aria-description')).toBe('Includes a model forecast');
 
@@ -530,38 +493,36 @@ describe('Dua panel', () => {
     expect(other.querySelector('.choice-forecast')).toBeNull();
     expect(other.hasAttribute('aria-description')).toBe(false);
   });
-  it('opens the forecast details in a small popover by its record, not another window', () => {
+  it('opens the forecast details in a small card above the info button by its record', () => {
     const { fixture, click } = setup();
     fixture.componentRef.setInput('symbol', 'AAPL');
     fixture.detectChanges();
     click('This Stock');
     const el = fixture.nativeElement as HTMLElement;
     const toggle = () =>
-      el.querySelector('.insight-card:not(.inactive) .forecast-record') as HTMLButtonElement;
-    const pop = () => el.querySelector('.insight-card:not(.inactive) .forecast-pop');
+      el.querySelector(
+        '.insight-card:not(.inactive) .forecast-record .info-button',
+      ) as HTMLButtonElement;
+    const pop = () => el.querySelector('.insight-card:not(.inactive) .info-pop');
     expect(el.querySelector('.forecast-link')).toBeNull();
     expect(pop()).toBeNull();
     expect(toggle().getAttribute('aria-expanded')).toBe('false');
+    expect(toggle().getAttribute('aria-label')).toBe('About this confidence');
+    expect(toggle().querySelector('ng-icon')?.getAttribute('name')).toBe('lucideInfo');
 
-    const scrollIntoView = vi.fn();
-    const original = Element.prototype.scrollIntoView;
-    Element.prototype.scrollIntoView = scrollIntoView;
-    onTestFinished(() => {
-      Element.prototype.scrollIntoView = original;
-    });
     toggle().click();
     fixture.detectChanges();
     expect(toggle().getAttribute('aria-expanded')).toBe('true');
-    // Opened in a card that scrolls, the popover is brought into view.
-    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
-    expect(scrollIntoView.mock.contexts[0]).toBe(pop());
+    // It floats over the card, outside the scrolling content that would clip it, so the card
+    // keeps its size; once placed, it shows.
+    expect(getComputedStyle(pop()!).position).toBe('absolute');
+    expect(pop()!.closest('.card-content')).toBeNull();
+    expect((pop() as HTMLElement).style.visibility).toBe('visible');
     const text = pop()!.textContent!.replace(/\s+/g, ' ');
-    expect(text).toContain('Based on its last 19 calls: right on 16.');
-    expect(text).toContain('Called 19 of the last 25 weeks');
-    expect(text).toContain(
-      'Simple pattern, "Keeps going the same way": right 12 of the last 20 weeks.',
+    // Short: the frequency behind the score and one caveat.
+    expect(text.trim()).toBe(
+      'Right on 16 of its last 19 calls. Closed weeks only. It can be wrong.',
     );
-    expect(text).toContain('it can be wrong');
 
     // Escape closes the popover only; Dua stays open.
     pop()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
@@ -579,6 +540,15 @@ describe('Dua panel', () => {
     fixture.detectChanges();
     click('Next insight');
     click('Previous insight');
+    expect(pop()).toBeNull();
+
+    // It does not scroll with the card's content, so scrolling closes it.
+    toggle().click();
+    fixture.detectChanges();
+    el.querySelector('.insight-card:not(.inactive) .card-content')!.dispatchEvent(
+      new Event('scroll'),
+    );
+    fixture.detectChanges();
     expect(pop()).toBeNull();
   });
   it('marks the buy or sell suggestion as a forecast with its record', () => {
@@ -645,9 +615,8 @@ describe('Dua panel', () => {
         '.insight-card:not(.inactive)',
       ) as HTMLElement;
       expect(card.querySelector('h3')!.textContent!.trim()).toBe('Recent activity');
-      expect(card.textContent).toContain(
-        'AAPL is calmer than usual: a typical daily move of 0.5% over the last 5 trading days, against a usual 1.1%.',
-      );
+      expect(card.textContent).toContain('AAPL is calmer than usual.');
+      expect(card.textContent).not.toContain('typical daily move');
       expect(card.textContent).not.toMatch(/momentum/i);
       expect(card.querySelector('.swing-word.swing-less')?.textContent).toBe('calmer than usual');
     } finally {
@@ -703,7 +672,7 @@ describe('Dua panel', () => {
       trend.trend.set(forecasts);
     }
   });
-  it('labels the account, snapshot day and page, with an icon-only details action', () => {
+  it('labels the account, snapshot day and page, with an icon-only help action for details', () => {
     const { fixture, click, text } = setup();
     click('Daily Review');
     const panel = fixture.nativeElement as HTMLElement;
@@ -714,6 +683,7 @@ describe('Dua panel', () => {
     const details = panel.querySelector('.insight-card:not(.inactive) .explain-action')!;
     expect(details.getAttribute('aria-label')).toBe('View Details');
     expect(details.textContent!.trim()).toBe('');
+    expect(details.querySelector('ng-icon')?.getAttribute('name')).toBe('lucideCircleHelp');
     expect(panel.querySelector('[aria-label="Refresh"]')).toBeNull();
     clock.currentMarketTimestamp.set('2026-01-06T15:05:00Z');
     fixture.detectChanges();

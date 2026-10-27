@@ -38,6 +38,7 @@ import {
   lucideChartPie,
   lucideChevronLeft,
   lucideChevronRight,
+  lucideCircleHelp,
   lucideExternalLink,
   lucideInfo,
   lucideNewspaper,
@@ -83,6 +84,9 @@ const FORECAST_TOAST_DELAY_MS = 1500;
 export const IDLE_WARNING_LINE =
   "Still there? I'll sign you out in a minute to keep your account safe.";
 
+// An info popover's usual width, as a View Details popover's; beside its button it may be narrower.
+const INFO_POP_WIDTH = 300;
+
 const CHOICE_TITLES: Record<DuaChoice, string> = {
   daily: 'Daily Review',
   holdings: 'Portfolio Analysis',
@@ -90,12 +94,6 @@ const CHOICE_TITLES: Record<DuaChoice, string> = {
   outlook: 'Volatility outlook',
   trending: "What's trending",
 };
-
-// The smallest size the panel can be dragged to.
-const DUA_MIN_SIZE = { width: 320, height: 360 };
-// A resized panel's text scales with its width against the default width, within these bounds.
-const DUA_DEFAULT_WIDTH = 420;
-const DUA_TEXT_SCALE = { min: 0.9, max: 1.4 };
 
 @Component({
   selector: 'app-dua',
@@ -122,6 +120,7 @@ const DUA_TEXT_SCALE = { min: 0.9, max: 1.4 };
       lucideChartPie,
       lucideChevronLeft,
       lucideChevronRight,
+      lucideCircleHelp,
       lucideExternalLink,
       lucideInfo,
       lucideNewspaper,
@@ -139,6 +138,7 @@ const DUA_TEXT_SCALE = { min: 0.9, max: 1.4 };
     './dua-launcher-pill.css',
     './dua-details-pop.css',
     './dua-forecast-toast.css',
+    './dua-info-pop.css',
   ],
 })
 export class DuaComponent {
@@ -263,8 +263,8 @@ export class DuaComponent {
     return choice ? CHOICE_TITLES[choice] : 'Dua';
   });
   protected readonly activeCard = signal(0);
-  // The forecast card whose record popover is open, by index, or null.
-  protected readonly recordOpen = signal<number | null>(null);
+  // The open info popover, such as a forecast's record or a takeaway's figures, by id, or null.
+  protected readonly infoOpen = signal<string | null>(null);
   // The card whose View Details popover is open, by index, or null.
   protected readonly detailsOpen = signal<number | null>(null);
   protected readonly cards = signal<DuaCard[]>([]);
@@ -581,6 +581,7 @@ export class DuaComponent {
       {
         title: 'Recent activity',
         emphasizeText: true,
+        emphasizeTakeaway: true,
         ...this.swingsPhrase(symbol, risk, swingHorizon),
         text:
           ratio === undefined
@@ -659,7 +660,7 @@ export class DuaComponent {
       const active = this.activeCard();
       this.cards();
       untracked(() => {
-        this.recordOpen.set(null);
+        this.infoOpen.set(null);
         // A details popover belongs to its card: moving to another card closes it.
         if (this.detailsOpen() !== active) this.detailsOpen.set(null);
       });
@@ -750,18 +751,6 @@ export class DuaComponent {
           if (this.session.unread(snapshot)) this.session.viewedSummary(snapshot);
         });
       }
-    });
-    const destroyRef = inject(DestroyRef);
-    afterNextRender(() => {
-      const panel = this.panel()?.nativeElement;
-      if (!panel || typeof ResizeObserver === 'undefined') {
-        return;
-      }
-      const observer = new ResizeObserver((entries) =>
-        this.panelWidth.set(entries[0]?.contentRect.width ?? 0),
-      );
-      observer.observe(panel);
-      destroyRef.onDestroy(() => observer.disconnect());
     });
     afterRenderEffect(() => {
       // Measure after Angular renders the destination view, then animate from the prior size.
@@ -874,120 +863,39 @@ export class DuaComponent {
   }
 
   /**
-   * How much the stock has been swinging lately: its typical daily move over the last days
-   * beside its usual size, both from the volatility signal file. Measured, not forecast.
+   * How much the stock has been swinging lately, as a short statement, with its typical daily
+   * move over the last days beside its usual size, both from the volatility signal file, behind
+   * an info button. Measured, not forecast.
    */
   private swingsPhrase(
     symbol: string,
     risk: ReturnType<typeof readingFor> | null,
     days: number,
-  ): Pick<DuaCard, 'takeaway' | 'highlight'> {
+  ): Pick<DuaCard, 'takeaway' | 'highlight' | 'aside'> {
     if (risk?.kind !== 'ready' || !risk.usualVolatility) {
       return { takeaway: 'Not enough price history to measure its swings yet.' };
     }
     const pct = (value: number) => `${(value * 100).toFixed(1)}%`;
     const ratio = risk.recentVolatility / risk.usualVolatility;
-    const sizes = `a typical daily move of ${pct(risk.recentVolatility)} over the last ${days} trading days, against a usual ${pct(risk.usualVolatility)}`;
+    const aside = {
+      label: 'How big the swings are',
+      text: `A typical daily move of ${pct(risk.recentVolatility)} over the last ${days} trading days, against a usual ${pct(risk.usualVolatility)}.`,
+    };
     if (ratio > 1.1) {
       return {
-        takeaway: `${symbol} is swinging more than usual: ${sizes}.`,
+        takeaway: `${symbol} is swinging more than usual.`,
         highlight: { text: 'swinging more than usual', tone: 'more' },
+        aside,
       };
     }
     if (ratio < 0.9) {
       return {
-        takeaway: `${symbol} is calmer than usual: ${sizes}.`,
+        takeaway: `${symbol} is calmer than usual.`,
         highlight: { text: 'calmer than usual', tone: 'less' },
+        aside,
       };
     }
-    return { takeaway: `${symbol}'s swings are about usual: ${sizes}.` };
-  }
-
-  // The panel's rendered width, watched so a resized panel's text follows it, including when the
-  // browser window caps the panel.
-  private readonly panelWidth = signal(0);
-  protected readonly textScale = computed(() => {
-    const width = this.panelWidth();
-    if (!this.session.size() || !width) {
-      return 1;
-    }
-    const scale = Math.min(
-      Math.max(width / DUA_DEFAULT_WIDTH, DUA_TEXT_SCALE.min),
-      DUA_TEXT_SCALE.max,
-    );
-    return Math.round(scale * 100) / 100;
-  });
-
-  // Free resize from the panel's top-left corner. The panel is anchored bottom-right, so dragging
-  // up and to the left makes it larger.
-  private resizeStart: { x: number; y: number; width: number; height: number } | null = null;
-
-  protected startResize(event: PointerEvent): void {
-    const panel = this.panel()?.nativeElement;
-    if (event.button !== 0 || !panel) {
-      return;
-    }
-    this.resizeStart = {
-      x: event.clientX,
-      y: event.clientY,
-      width: panel.offsetWidth,
-      height: panel.offsetHeight,
-    };
-    (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
-    event.preventDefault();
-  }
-
-  protected moveResize(event: PointerEvent): void {
-    const start = this.resizeStart;
-    if (start) {
-      this.setSize(start.width + start.x - event.clientX, start.height + start.y - event.clientY);
-    }
-  }
-
-  protected endResize(event: PointerEvent): void {
-    this.resizeStart = null;
-    (event.currentTarget as HTMLElement).releasePointerCapture?.(event.pointerId);
-  }
-
-  /** Arrow keys grow or shrink the panel in steps, and Home puts it back to its default size. */
-  protected resizeByKey(event: KeyboardEvent): void {
-    const panel = this.panel()?.nativeElement;
-    if (!panel) {
-      return;
-    }
-    const step = 24;
-    const { offsetWidth: width, offsetHeight: height } = panel;
-    const sizes: Record<string, [number, number] | null> = {
-      ArrowLeft: [width + step, height],
-      ArrowRight: [width - step, height],
-      ArrowUp: [width, height + step],
-      ArrowDown: [width, height - step],
-      Home: null,
-    };
-    if (!(event.key in sizes)) {
-      return;
-    }
-    event.preventDefault();
-    event.stopPropagation();
-    const size = sizes[event.key];
-    if (size) {
-      this.setSize(...size);
-    } else {
-      this.resetSize();
-    }
-  }
-
-  protected resetSize(): void {
-    this.session.size.set(null);
-  }
-
-  private setSize(width: number, height: number): void {
-    const clamp = (value: number, min: number, max: number) =>
-      Math.round(Math.min(Math.max(value, min), Math.max(min, max)));
-    this.session.size.set({
-      width: clamp(width, DUA_MIN_SIZE.width, window.innerWidth - 32),
-      height: clamp(height, DUA_MIN_SIZE.height, window.innerHeight - 116),
-    });
+    return { takeaway: `${symbol}'s swings are about usual.`, aside };
   }
 
   protected toggleDetails(index: number): void {
@@ -1004,40 +912,67 @@ export class DuaComponent {
     ((event.currentTarget as HTMLElement).querySelector('.explain-action') as HTMLElement)?.focus();
   }
 
-  protected toggleRecord(index: number): void {
-    const open = this.recordOpen() === index ? null : index;
-    this.recordOpen.set(open);
+  protected toggleInfo(id: string): void {
+    const open = this.infoOpen() === id ? null : id;
+    this.infoOpen.set(open);
     if (open === null) {
       return;
     }
-    // A card with less room than it needs scrolls, and the popover may open below what shows.
-    afterNextRender(
-      () =>
-        this.panel()
-          ?.nativeElement.querySelector(`#forecast-pop-${open}`)
-          ?.scrollIntoView?.({ block: 'nearest' }),
-      { injector: this.injector },
-    );
+    afterNextRender(() => this.placeInfo(open), { injector: this.injector });
   }
 
-  /** Escape closes an open record popover first, and leaves Dua open. */
-  protected closeRecord(event: Event): void {
-    if (this.recordOpen() === null) {
+  /**
+   * An info popover is a small card beside its info button: to its right, or to its left when
+   * the card has more room there, as wide as that side allows up to its usual width. It floats
+   * over the card so opening it never changes the card's size, and sits in the card, outside the
+   * scrolling content, whose animated children would otherwise clip it; it is placed here.
+   * Scrolling the content closes it, since it does not follow.
+   */
+  private placeInfo(id: string): void {
+    const pop = this.panel()?.nativeElement.querySelector<HTMLElement>(`#${id}`);
+    const card = pop?.closest<HTMLElement>('.insight-card');
+    const button = card?.querySelector<HTMLElement>(`[aria-controls="${id}"]`);
+    if (!pop || !card || !button) {
+      return;
+    }
+    // Offsets against the card's padding box, where the popover is positioned.
+    const cardBox = card.getBoundingClientRect();
+    const origin = { x: cardBox.left + card.clientLeft, y: cardBox.top + card.clientTop };
+    const buttonBox = button.getBoundingClientRect();
+    const inset = 8;
+    const gap = 8;
+    const right = card.clientWidth - (buttonBox.right - origin.x) - gap - inset;
+    const left = buttonBox.left - origin.x - gap - inset;
+    const onLeft = left > right;
+    const width = Math.min(INFO_POP_WIDTH, Math.max(onLeft ? left : right, 0));
+    pop.style.width = `${width}px`;
+    pop.style.left = `${onLeft ? buttonBox.left - origin.x - gap - width : buttonBox.right - origin.x + gap}px`;
+    // Centred on the button, but not above the card's top edge.
+    const middle = buttonBox.top + buttonBox.height / 2 - origin.y;
+    pop.style.top = `${Math.max(middle - pop.offsetHeight / 2, inset)}px`;
+    pop.style.visibility = 'visible';
+  }
+
+  /** Escape closes an open info popover first, returns focus to its button, and leaves Dua open. */
+  protected closeInfo(event: Event): void {
+    const id = this.infoOpen();
+    if (id === null) {
       return;
     }
     event.stopPropagation();
-    this.recordOpen.set(null);
-    (
-      (event.currentTarget as HTMLElement).querySelector('.forecast-record') as HTMLElement
-    )?.focus();
+    this.infoOpen.set(null);
+    (event.currentTarget as HTMLElement)
+      .closest('.insight-card')
+      ?.querySelector<HTMLElement>(`[aria-controls="${id}"]`)
+      ?.focus();
   }
 
   protected closeOnOutsideClick(event: MouseEvent): void {
     const path = event.composedPath();
     const inside = (name: string) =>
       path.some((el) => el instanceof Element && el.classList.contains(name));
-    if (this.recordOpen() !== null && !inside('forecast-record-wrap')) {
-      this.recordOpen.set(null);
+    if (this.infoOpen() !== null && !inside('info-button') && !inside('info-pop')) {
+      this.infoOpen.set(null);
     }
     if (this.detailsOpen() !== null && !inside('details-pop') && !inside('explain-action')) {
       this.detailsOpen.set(null);
@@ -1050,7 +985,8 @@ export class DuaComponent {
     if (
       (panel && path.includes(panel)) ||
       (launcher && path.includes(launcher)) ||
-      inside('forecast-toast')
+      inside('forecast-toast') ||
+      path.some((el) => el instanceof Element && el.hasAttribute('data-opens-dua'))
     ) {
       return;
     }
@@ -1061,6 +997,26 @@ export class DuaComponent {
   /** The forecast toast opens Dua on This Stock, whose first card is the forecast. */
   protected openForecastToast(): void {
     this.forecastToast.set('');
+    this.openStock();
+  }
+
+  /** Whether Dua is open on This Stock, as the chart's Forecast button shows. */
+  readonly stockOpen = computed(() => !this.session.minimized() && this.choice() === 'stock');
+
+  /**
+   * The chart's Forecast button: opens Dua on This Stock, whose first card is the forecast, or
+   * closes Dua when This Stock already shows, leaving focus on the button.
+   */
+  toggleStock(): void {
+    if (this.stockOpen()) {
+      this.minimize(false);
+      return;
+    }
+    this.openStock();
+  }
+
+  private openStock(): void {
+    this.clearTimers();
     this.session.minimized.set(false);
     if (!this.historyLoading()) {
       this.select('stock');

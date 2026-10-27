@@ -79,8 +79,8 @@ button {
   position: absolute;
   right: 0;
   bottom: 84px;
-  width: min(420px, calc(100vw - 32px));
-  max-height: min(640px, calc(100dvh - 116px - env(safe-area-inset-bottom)));
+  width: min(460px, calc(100vw - 32px));
+  max-height: min(700px, calc(100dvh - 116px - env(safe-area-inset-bottom)));
   display: flex;
   flex-direction: column;
   border: 1px solid var(--border);
@@ -802,7 +802,7 @@ article h3 {
   grid-area: 1 / 1;
   height: auto;
   align-self: stretch;
-  max-height: min(440px, calc(100dvh - 200px));
+  max-height: min(480px, calc(100dvh - 200px));
 }
 .insight-card.inactive {
   visibility: hidden;
@@ -888,7 +888,7 @@ article h3 {
 
 /* Constrain intrinsic grid sizing as well as the outer panel. */
 .dua-panel {
-  width: min(420px, calc(100vw - 32px));
+  width: min(460px, calc(100vw - 32px));
   max-width: calc(100vw - 32px);
 }
 .dua-body,
@@ -923,6 +923,10 @@ article h3 {
   font-weight: 600;
   line-height: 1.25;
   color: var(--dua-heading);
+}
+/* A card's one short statement, such as how much the stock is swinging, is set larger. */
+.guidance-headline.prominent {
+  font-size: 28px;
 }
 .guidance-description {
   margin: 10px 0;
@@ -1195,85 +1199,15 @@ article h3 {
   max-height: min(560px, calc(100dvh - 116px - env(safe-area-inset-bottom)));
 }
 
-/* Price-swing phrases: amber for more than usual, teal for less, never direction's red or green. */
-.swing-word.swing-more {
-  color: var(--dua-swing-more);
-}
-.swing-word.swing-less {
-  color: var(--dua-swing-less);
-}
-
 /*
- * The resize grip in the panel's top-left corner. A dragged size is set on the panel inline and
- * is still capped by the panel's max-width and max-height; phones keep the full-width panel.
+ * Price-swing phrases in the analysis cards stand out bold and underlined, in the text's own
+ * colour, never in direction's red or green.
  */
-.resize-grip {
-  position: absolute;
-  top: 1px;
-  left: 1px;
-  z-index: 5;
-  display: grid;
-  place-items: center;
-  width: 18px;
-  height: 18px;
-  padding: 0;
-  border: 0;
-  border-radius: 14px 4px 4px 4px;
-  background: transparent;
-  color: var(--muted-foreground);
-  cursor: nwse-resize;
-  touch-action: none;
+.swing-word {
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
-.resize-grip svg {
-  width: 12px;
-  height: 12px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.5;
-  stroke-linecap: round;
-}
-.resize-grip:hover,
-.resize-grip:focus-visible {
-  color: var(--primary);
-}
-.resize-grip:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: -2px;
-}
-.dua-panel.resized {
-  max-height: calc(100dvh - 116px - env(safe-area-inset-bottom));
-}
-.dua-panel.resized .insights .insight-card {
-  max-height: none;
-}
-/*
- * A resized panel's content scales with its width (--dua-text-scale, set from the panel's
- * width), so text and spacing grow and shrink together. The body's children are zoomed, not the
- * body, so the scrolling body keeps the panel's real height; the header, the page controls and
- * the footnotes keep their size, which also keeps their margins out of the card's share of room.
- */
-.dua-body > * {
-  zoom: var(--dua-text-scale, 1);
-}
-.dua-body > :is(.card-navigation, .timestamp, .simulation-notice) {
-  zoom: 1;
-}
-/*
- * A resized panel gives the card whatever room the page controls and notes leave, so those stay
- * in view at the bottom; a card taller than its room, as scaled-up text can make it, scrolls.
- */
-.dua-panel.resized .dua-body {
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: column;
-}
-.dua-panel.resized .insights {
-  flex: 1 1 0;
-  min-height: 0;
-  grid-template-rows: minmax(0, 1fr) auto;
-}
-@media (max-width: 700px) {
-  .resize-grip {
-    display: none;
-  }
+.guidance-headline .swing-word {
+  font-weight: 800;
 }

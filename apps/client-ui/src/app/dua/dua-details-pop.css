@@ -1,21 +1,26 @@
 /*
- * A card's View Details popover: it floats under the info button, over the card, rather than
- * replacing the card with a separate page. The card positions it.
+ * A card's View Details popover: it floats under the help button, over the card, rather than
+ * replacing the card with a separate page. The card positions it. Like the info popovers
+ * (dua-info-pop.css), which are the same kind of card and share its look, it has no arrow; only
+ * where they sit differs.
  */
 .insights .insight-card {
   position: relative;
 }
 .details-pop {
-  position: absolute;
   top: 46px;
   right: 12px;
+  max-height: calc(100% - 56px);
+  overflow-y: auto;
+}
+.details-pop,
+.info-pop {
+  position: absolute;
   z-index: 3;
   display: grid;
   gap: 6px;
   box-sizing: border-box;
   width: min(300px, calc(100% - 24px));
-  max-height: calc(100% - 56px);
-  overflow-y: auto;
   border: 1px solid color-mix(in srgb, var(--primary) 40%, var(--border));
   border-radius: 10px;
   background: var(--card);
@@ -26,24 +31,13 @@
   line-height: 1.5;
   animation: dua-details-pop 160ms ease-out;
 }
-.details-pop::before {
-  content: '';
-  position: absolute;
-  top: -6px;
-  right: 14px;
-  width: 10px;
-  height: 10px;
-  border-top: 1px solid color-mix(in srgb, var(--primary) 40%, var(--border));
-  border-left: 1px solid color-mix(in srgb, var(--primary) 40%, var(--border));
-  background: var(--card);
-  transform: rotate(45deg);
-}
 .details-pop h4 {
   margin: 0;
   font-size: inherit;
   font-weight: 600;
 }
-.details-pop p {
+.details-pop p,
+.info-pop p {
   margin: 0;
 }
 .explain-action[aria-expanded='true'] {
@@ -56,7 +50,8 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .details-pop {
+  .details-pop,
+  .info-pop {
     animation: none;
   }
 }

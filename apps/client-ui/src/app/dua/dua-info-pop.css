@@ -1,0 +1,45 @@
+/*
+ * Info buttons and the small cards they open: a forecast's record beside its confidence score,
+ * and the figures behind a takeaway at the end of it.
+ */
+.info-button {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dua-heading);
+  font-size: 16px;
+  vertical-align: middle;
+}
+.info-button:hover,
+.info-button[aria-expanded='true'] {
+  background: color-mix(in srgb, var(--foreground) 7%, transparent);
+}
+.info-button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.guidance-headline .info-button {
+  margin-left: 2px;
+}
+
+/*
+ * The small card itself, the same kind as a View Details popover, whose look it shares
+ * (dua-details-pop.css). It sits beside its button: to its right, or to its
+ * left when the card has more room there. It floats over the card outside the scrolling content,
+ * so the card keeps its size and the content does not clip it; the component places and sizes it,
+ * and it stays hidden until then. Its title stands out by weight alone, in the popover's one
+ * colour.
+ */
+.info-pop {
+  top: 0;
+  left: 0;
+  visibility: hidden;
+}
+.info-pop-title {
+  font-weight: 600;
+}

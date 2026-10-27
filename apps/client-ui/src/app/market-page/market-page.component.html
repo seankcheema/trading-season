@@ -620,7 +620,7 @@
                       role="tablist"
                       aria-label="Instrument tools"
                     >
-                      @for (tab of ['trading', 'recent-orders', 'forecast']; track tab) {
+                      @for (tab of ['trading', 'recent-orders']; track tab) {
                         <button
                           type="button"
                           role="tab"
@@ -633,9 +633,6 @@
                           [attr.aria-selected]="insightTab() === tab"
                           (click)="selectTab($any(tab))"
                         >
-                          @if (tab === 'forecast') {
-                            <span class="tab-forecast-mark" aria-hidden="true"></span>
-                          }
                           {{ tab === 'recent-orders' ? 'Recent Orders' : (tab | titlecase) }}
                         </button>
                       }
@@ -779,19 +776,6 @@
                           }
                         }
                       </ul>
-                    </div>
-                  }
-                  @case ('forecast') {
-                    <div
-                      class="insight-content insight-feed"
-                      role="tabpanel"
-                      aria-label="Forecast"
-                      data-testid="market-forecast"
-                    >
-                      <app-forecast-panel
-                        [symbol]="active.symbol"
-                        [marketTimestamp]="marketTimestamp()"
-                      />
                     </div>
                   }
                 }

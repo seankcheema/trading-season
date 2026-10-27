@@ -21,7 +21,6 @@ import { MarketClockControlComponent } from '../dashboard/shared/market-clock-co
 import { MarketClockService } from '../dashboard/shared/market-clock.service';
 
 import { DuaComponent } from '../dua/dua.component';
-import { ForecastPanelComponent } from './forecast-panel/forecast-panel.component';
 import {
   ActivityItem,
   ActivityRowComponent,
@@ -37,12 +36,10 @@ import {
   TitleCasePipe,
 } from '@angular/common';
 import {
-  afterNextRender,
   ChangeDetectionStrategy,
   Component,
   ElementRef,
   HostListener,
-  Injector,
   NgZone,
   OnDestroy,
   OnInit,
@@ -113,7 +110,7 @@ import { DuaEmptyComponent } from '../dua/dua-empty.component';
 type PageStatus = 'loading' | 'ready' | 'not-found' | 'error';
 type ChartStatus = 'loading' | 'ready' | 'empty' | 'error';
 
-type InsightTab = 'trading' | 'recent-orders' | 'forecast';
+type InsightTab = 'trading' | 'recent-orders';
 
 type ToolbarMenu = 'indicators' | 'chart-mode' | 'comparison';
 
@@ -134,7 +131,6 @@ interface MarketStats {
     DuaEmptyComponent,
     ThemeToggleComponent,
     DuaComponent,
-    ForecastPanelComponent,
     TitleCasePipe,
     NgTemplateOutlet,
     OrderEditorComponent,
@@ -577,15 +573,9 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   protected readonly duaOutlook = signal(false);
   protected readonly insightTab = signal<InsightTab>('trading');
   protected readonly toolsCollapsed = signal(false);
-  // The market tools' Forecast tab, chosen there, by the chart's Forecast button or by
-  // ?forecast=open. The button reads as pressed while the tab shows; pressed again, it returns to
-  // the tab before, and hides the tools again if opening the forecast had to show them.
-  protected readonly forecastOpen = computed(
-    () => this.insightTab() === 'forecast' && !this.toolsCollapsed(),
-  );
-  private forecastFromLink = false;
-  private tabBeforeForecast: InsightTab = 'trading';
-  private forecastShowedTools = false;
+  // The chart's Forecast button opens Dua on This Stock, and reads as pressed while that shows.
+  private readonly dua = viewChild(DuaComponent);
+  protected readonly forecastOpen = computed(() => this.dua()?.stockOpen() ?? false);
   protected readonly openToolbarMenu = signal<ToolbarMenu | null>(null);
   protected readonly enabledIndicators = signal<readonly TechnicalIndicator[]>([]);
   protected readonly indicatorOptions = [
@@ -776,10 +766,6 @@ export class MarketPageComponent implements OnInit, OnDestroy {
         if (params.get('tab') === 'outlook') {
           this.duaOutlook.set(true);
         }
-        if (params.get('forecast') === 'open') {
-          this.forecastFromLink = true;
-          this.openForecast();
-        }
         const rawSymbol = params.get('compare') ?? '';
         const symbol = normalizeMarketSymbol(rawSymbol);
         this.comparisonSymbol.set(symbol);
@@ -841,60 +827,12 @@ export class MarketPageComponent implements OnInit, OnDestroy {
 
   private readonly menuHost = inject(ElementRef<HTMLElement>);
 
-  private readonly injector = inject(Injector);
-
   protected selectTab(tab: InsightTab): void {
-    const current = this.insightTab();
-    if (tab === current) {
-      return;
-    }
-    if (tab === 'forecast') {
-      this.tabBeforeForecast = current;
-    } else if (current === 'forecast') {
-      this.leaveForecast();
-    }
     this.insightTab.set(tab);
   }
 
   protected toggleForecast(): void {
-    if (!this.forecastOpen()) {
-      this.openForecast();
-      return;
-    }
-    const hideTools = this.forecastShowedTools;
-    this.selectTab(this.tabBeforeForecast);
-    if (hideTools) {
-      this.toolsCollapsed.set(true);
-    }
-  }
-
-  private openForecast(): void {
-    this.forecastShowedTools = this.toolsCollapsed();
-    this.toolsCollapsed.set(false);
-    this.selectTab('forecast');
-    // Where the tools stack under the chart on smaller screens, the tab is brought into view.
-    afterNextRender(
-      () =>
-        this.menuHost.nativeElement
-          .querySelector('.insight-panel')
-          ?.scrollIntoView?.({ block: 'nearest' }),
-      { injector: this.injector },
-    );
-  }
-
-  // Leaving the Forecast tab drops ?forecast=open, so the same link can open it again later.
-  private leaveForecast(): void {
-    this.forecastShowedTools = false;
-    if (!this.forecastFromLink) {
-      return;
-    }
-    this.forecastFromLink = false;
-    void this.router.navigate([], {
-      relativeTo: this.route,
-      queryParams: { forecast: null },
-      queryParamsHandling: 'merge',
-      replaceUrl: true,
-    });
+    this.dua()?.toggleStock();
   }
   protected readonly toolbarMenuPosition = signal({ left: 0, top: 0 });
 

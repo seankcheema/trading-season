@@ -26,8 +26,7 @@
 
 /*
  * The card's content scrolls, so it clips whatever reaches past its edge. It reaches 10px into
- * the card's padding, its text staying put, so the record button and popover that sit 6px left
- * of the text, and the button's focus ring, are not cut off.
+ * the card's padding, its text staying put, so the info button's focus ring is not cut off.
  */
 .insight-card .card-content {
   max-width: calc(100% + 20px);
@@ -35,28 +34,20 @@
   padding-inline: 10px;
 }
 
-/* The forecast's record: its track strip and the frequency, a button that opens the details. */
+/* The forecast's record: its confidence score, and an info button that opens the details. */
 .forecast-record-wrap {
-  position: relative;
   margin-top: 14px;
 }
 .forecast-record {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px 10px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: none;
-  padding: 4px 6px;
-  margin-left: -6px;
+  gap: 6px;
   color: var(--dua-copy);
-  text-align: left;
   font-size: 12px;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
-
 /*
  * While a forecast card is showing, the Dua panel it sits in rests with a faint edge and glow in
  * the brand hue. Cards sit flush inside the panel with no border of their own, so the panel's
@@ -115,69 +106,4 @@
   .dua-panel:has(.insight-card.forecast-card:not(.inactive)) {
     animation: none;
   }
-}
-.forecast-record:hover,
-.forecast-record[aria-expanded='true'] {
-  border-color: color-mix(in srgb, var(--primary) 40%, transparent);
-  background: color-mix(in srgb, var(--primary) 8%, transparent);
-}
-.forecast-record:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
-}
-.forecast-record-more {
-  width: 6px;
-  height: 6px;
-  border-right: 2px solid currentColor;
-  border-bottom: 2px solid currentColor;
-  transform: rotate(45deg) translateY(-2px);
-}
-.forecast-record[aria-expanded='true'] .forecast-record-more {
-  transform: rotate(-135deg) translateY(-2px);
-}
-
-/*
- * The record's details, in a small popover under the button rather than another window. It opens
- * in the flow, pointing up at the button: the card's content scrolls and clips anything floated
- * past its edge. Its type matches the View Details popover's.
- */
-.forecast-pop {
-  position: relative;
-  margin-top: 8px;
-  margin-left: -6px;
-  display: grid;
-  gap: 6px;
-  width: min(300px, calc(100% + 6px));
-  box-sizing: border-box;
-  border: 1px solid color-mix(in srgb, var(--primary) 40%, var(--border));
-  border-radius: 10px;
-  background: var(--card);
-  box-shadow: 0 14px 32px -14px #000c;
-  padding: 10px 12px;
-  color: var(--dua-copy);
-  font-size: 13px;
-  line-height: 1.5;
-}
-.forecast-pop::before {
-  content: '';
-  position: absolute;
-  top: -6px;
-  left: 18px;
-  width: 10px;
-  height: 10px;
-  border-top: 1px solid color-mix(in srgb, var(--primary) 40%, var(--border));
-  border-left: 1px solid color-mix(in srgb, var(--primary) 40%, var(--border));
-  background: var(--card);
-  transform: rotate(45deg);
-}
-.forecast-pop p {
-  margin: 0;
-}
-.forecast-pop-title {
-  color: var(--foreground);
-  font-weight: 600;
-}
-.forecast-pop-note {
-  color: var(--muted-foreground);
-  font-size: 11px;
 }

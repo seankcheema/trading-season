@@ -101,9 +101,13 @@
   }
 }
 
-/* In Dua's menu, This Stock says when a model forecast covers the stock. */
+/*
+ * In Dua's menu, This Stock says when a model forecast covers the stock, on its own line above
+ * What to consider next, both lined up under the title. The turned diamond reaches 1px past its
+ * box, so it is moved in by that much.
+ */
 .choice-forecast {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 4px;
   color: var(--primary);
@@ -112,4 +116,5 @@
 .choice-forecast .forecast-mark {
   width: 5px;
   height: 5px;
+  margin-left: 1px;
 }

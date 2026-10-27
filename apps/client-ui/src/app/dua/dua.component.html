@@ -2,10 +2,6 @@
   #panel
   class="dua-panel"
   [class.minimized]="session.minimized()"
-  [class.resized]="!!session.size() && !raised()"
-  [style.width.px]="raised() ? null : session.size()?.width"
-  [style.height.px]="raised() ? null : session.size()?.height"
-  [style.--dua-text-scale]="textScale()"
   [attr.inert]="session.minimized() ? '' : null"
   [attr.aria-hidden]="session.minimized()"
   role="region"
@@ -13,25 +9,6 @@
   tabindex="-1"
   (keydown.escape)="$event.stopPropagation(); minimize()"
 >
-  @if (!raised()) {
-    <button
-      type="button"
-      class="resize-grip"
-      aria-label="Resize Dua"
-      aria-description="Drag the corner, or use the arrow keys. Home or a double-click resets the size."
-      title="Drag to resize. Double-click to reset."
-      (pointerdown)="startResize($event)"
-      (pointermove)="moveResize($event)"
-      (pointerup)="endResize($event)"
-      (pointercancel)="endResize($event)"
-      (dblclick)="resetSize()"
-      (keydown)="resizeByKey($event)"
-    >
-      <svg viewBox="0 0 16 16" aria-hidden="true">
-        <path d="M3 9 9 3M3 13 13 3" />
-      </svg>
-    </button>
-  }
   <header class="dua-header">
     @if (choice()) {
       <button
@@ -116,7 +93,6 @@
                     <span class="choice-forecast"
                       ><span class="forecast-mark" aria-hidden="true"></span>Forecast</span
                     >
-                    ·
                   }
                   {{
                     item === 'stock'
@@ -173,7 +149,7 @@
                 [attr.aria-controls]="'card-details-' + cardIndex"
                 (click)="toggleDetails(cardIndex)"
               >
-                <ng-icon name="lucideInfo" aria-hidden="true" />
+                <ng-icon name="lucideCircleHelp" aria-hidden="true" />
               </button>
             </div>
             @if (detailsOpen() === cardIndex) {
@@ -190,11 +166,36 @@
                 <p>{{ card.detail }}</p>
               </div>
             }
+            @if (infoOpen() === 'aside-pop-' + cardIndex && card.aside; as aside) {
+              <div
+                class="info-pop"
+                role="group"
+                (keydown.escape)="closeInfo($event)"
+                [attr.aria-label]="aside.label"
+                [id]="'aside-pop-' + cardIndex"
+              >
+                <p>{{ aside.text }}</p>
+              </div>
+            }
+            @if (infoOpen() === 'forecast-pop-' + cardIndex && card.forecast?.record; as record) {
+              <div
+                class="info-pop"
+                role="group"
+                (keydown.escape)="closeInfo($event)"
+                aria-label="Forecast record"
+                [id]="'forecast-pop-' + cardIndex"
+              >
+                <p class="info-pop-title">
+                  Right on {{ record.hits }} of its last {{ record.total }} {{ record.unit }}.
+                </p>
+                <p>Closed weeks only. It can be wrong.</p>
+              </div>
+            }
             <small class="card-meta">
               <span>{{ asOfLabel() }}</span>
               <span>Page {{ $index + 1 }} of {{ cards().length }}</span>
             </small>
-            <div class="card-content">
+            <div class="card-content" (scroll)="infoOpen.set(null)">
               @if (!card.metricsFirst) {
                 <ng-container [ngTemplateOutlet]="guidance" />
               }
@@ -203,6 +204,7 @@
                   <p
                     [class.guidance-headline]="!card.metricsFirst"
                     [class.guidance-statement]="card.metricsFirst"
+                    [class.prominent]="card.emphasizeTakeaway"
                   >
                     @if (highlightParts(card); as parts) {
                       {{ parts[0]
@@ -215,6 +217,20 @@
                     } @else {
                       {{ card.takeaway }}
                     }
+                    @if (card.aside; as aside) {
+                      <button
+                        type="button"
+                        class="info-button"
+                        [attr.aria-label]="aside.label"
+                        [title]="aside.label"
+                        [attr.aria-expanded]="infoOpen() === 'aside-pop-' + cardIndex"
+                        [attr.aria-controls]="'aside-pop-' + cardIndex"
+                        (click)="toggleInfo('aside-pop-' + cardIndex)"
+                        (keydown.escape)="closeInfo($event)"
+                      >
+                        <ng-icon name="lucideInfo" aria-hidden="true" />
+                      </button>
+                    }
                   </p>
                 }
                 @if (card.text) {
@@ -226,43 +242,22 @@
                   <p class="guidance-advice">{{ card.advice }}</p>
                 }
                 @if (card.forecast?.record; as record) {
-                  <div class="forecast-record-wrap" (keydown.escape)="closeRecord($event)">
-                    <button
-                      type="button"
-                      class="forecast-record"
-                      [attr.aria-expanded]="recordOpen() === cardIndex"
-                      [attr.aria-controls]="'forecast-pop-' + cardIndex"
-                      (click)="toggleRecord(cardIndex)"
-                    >
+                  <div class="forecast-record-wrap">
+                    <div class="forecast-record">
                       <app-forecast-confidence [record]="record" />
-                      <span class="forecast-record-more" aria-hidden="true"></span>
-                    </button>
-                    @if (recordOpen() === cardIndex) {
-                      <div
-                        class="forecast-pop"
-                        role="group"
-                        aria-label="Forecast record"
-                        [id]="'forecast-pop-' + cardIndex"
+                      <button
+                        type="button"
+                        class="info-button"
+                        aria-label="About this confidence"
+                        title="About this confidence"
+                        [attr.aria-expanded]="infoOpen() === 'forecast-pop-' + cardIndex"
+                        [attr.aria-controls]="'forecast-pop-' + cardIndex"
+                        (click)="toggleInfo('forecast-pop-' + cardIndex)"
+                        (keydown.escape)="closeInfo($event)"
                       >
-                        <p class="forecast-pop-title">
-                          Based on its last {{ record.total }} {{ record.unit }}: right on
-                          {{ record.hits }}.
-                        </p>
-                        @if (record.coverage) {
-                          <p>{{ record.coverage }}</p>
-                        }
-                        @if (record.baseline; as baseline) {
-                          <p>
-                            Simple pattern, "{{ baseline.label }}": right {{ baseline.hits }} of the
-                            last {{ baseline.total }} weeks.
-                          </p>
-                        }
-                        <p class="forecast-pop-note">
-                          Only weeks that had closed count. A model's read on a simulated market; it
-                          can be wrong.
-                        </p>
-                      </div>
-                    }
+                        <ng-icon name="lucideInfo" aria-hidden="true" />
+                      </button>
+                    </div>
                   </div>
                 }
               </ng-template>
@@ -527,12 +522,7 @@
     <span class="dua-zzz" aria-hidden="true"><span>z</span><span>z</span><span>z</span></span>
   }
   @if (showPill()) {
-    <span class="launcher-pill" aria-hidden="true"
-      >Ask Dua
-      @if (hasUpdates()) {
-        <span class="launcher-pill-count">{{ unreadCount() }} new</span>
-      }
-    </span>
+    <span class="launcher-pill" aria-hidden="true">Ask Dua</span>
   }
   @if (hasUpdates() && session.minimized()) {
     <span class="notification-count" [attr.aria-label]="unreadCount() + ' new insight updates'">{{

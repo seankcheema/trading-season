@@ -248,8 +248,9 @@ const TOOLTIP_GAP_PX = 10;
           <button
             type="button"
             class="forecast-toggle"
+            data-opens-dua
             [attr.aria-pressed]="forecastOpen()"
-            [title]="forecastOpen() ? 'Hide the model forecast' : 'Show the model forecast'"
+            [title]="forecastOpen() ? 'Close the forecast in Dua' : 'Ask Dua about the forecast'"
             (click)="forecastToggle.emit()"
           >
             <span class="forecast-toggle-mark" aria-hidden="true"></span>
@@ -612,7 +613,7 @@ const TOOLTIP_GAP_PX = 10;
       background: #57d7ff;
       color: #08131a;
     }
-    /* The model forecast's door: the same cyan diamond its tab and Dua's badge wear. */
+    /* The model forecast's door into Dua: the same cyan diamond its tab and Dua's badge wear. */
     .forecast-toggle {
       display: inline-flex;
       flex-shrink: 0;
@@ -881,7 +882,8 @@ export class PriceChartComponent {
   readonly tooltipPlacement = input<TooltipPlacement>('point');
   readonly liveTailing = model(false);
   readonly showLiveTailing = input(false);
-  // A Forecast button beside the navigation bar; the page owns the Forecast tab it opens.
+  // A Forecast button beside the navigation bar; the page opens Dua's This Stock with it. It
+  // carries data-opens-dua so Dua does not take its click for a click outside and close again.
   readonly showForecast = input(false);
   readonly forecastOpen = input(false);
   readonly forecastToggle = output<void>();

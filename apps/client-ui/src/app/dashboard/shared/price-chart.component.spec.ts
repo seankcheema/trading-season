@@ -687,6 +687,8 @@ describe('PriceChartComponent', () => {
     fixture.detectChanges();
     const forecast = el.querySelector('.forecast-toggle') as HTMLButtonElement;
     expect(forecast.textContent?.trim()).toBe('Forecast');
+    // Dua, which the button opens, does not take its click for one outside that closes it.
+    expect(forecast.hasAttribute('data-opens-dua')).toBe(true);
     expect(forecast.getAttribute('aria-pressed')).toBe('false');
     forecast.click();
     expect(toggles).toHaveLength(1);

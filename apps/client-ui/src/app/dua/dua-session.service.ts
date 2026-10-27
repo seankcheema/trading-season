@@ -22,8 +22,6 @@ export class DuaSession {
   marketOpened = false;
   // Stocks whose forecast Dua has already pointed out, or been opened on, during this visit.
   readonly forecastSeen = new Set<string>();
-  // The panel size the user has dragged to, kept for the visit across pages; null is the default.
-  readonly size = signal<{ width: number; height: number } | null>(null);
   readonly revision = signal(0);
   private readonly http = inject(HttpClient);
   private readonly api = inject(BACKEND_API_URL);
