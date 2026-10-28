@@ -195,7 +195,7 @@ python -m pytest
 
 The Jenkins pipeline runs the same suite in a `python:3.14-slim` container from `requirements-ci.txt`, which leaves out TensorFlow and yfinance: the LSTM tests skip there and nothing touches the network. [PREREGISTRATION.md](PREREGISTRATION.md) fixes the frozen models, the expected test outcomes and the decision rules before the test years are scored. [PREREGISTRATION_WEEK_AHEAD.md](PREREGISTRATION_WEEK_AHEAD.md) does the same for the week-ahead risk test.
 
-Tests use synthetic random-walk prices, so they need no network. The LSTM tests skip where TensorFlow is missing. `test_no_model_beats_a_coin_flip_on_a_random_walk` is a leak alarm: random-walk data has nothing to learn, so a model scoring 60% or more on it means future data reached its inputs.
+Tests use synthetic random-walk prices, so they need no network. The LSTM tests skip where TensorFlow is missing; the code around each LSTM (purges, per-stock scalers and thresholds, scored days, saved-model scoring) still runs there against `FakeLstm` in [tests/helpers.py](tests/helpers.py), a stand-in model that records what it was fit on. `test_no_model_beats_a_coin_flip_on_a_random_walk` is a leak alarm: random-walk data has nothing to learn, so a model scoring 60% or more on it means future data reached its inputs.
 
 ## Vector autoregression
 
