@@ -9,9 +9,12 @@ import pandas as pd
 
 from stock_forecast import config
 from stock_forecast.data import save_prices
+from stock_forecast.platform_calibration import NO_RETRAIN_VARIANTS, PLATFORM_LSTM, calibration_rows
 from stock_forecast.platform_demo import (load_platform_prices, platform_dataset, platform_market,
                                           scheduled_spikes, spike_summary)
-from tests.helpers import make_prices
+from stock_forecast.platform_horizon import horizon_calibration_rows
+from stock_forecast.windows import fit_scalers
+from tests.helpers import FakeLstm, make_prices, snapshot_patches
 
 HAS_TENSORFLOW = importlib.util.find_spec("tensorflow") is not None
 SYMBOLS = ["AAPL", "MSFT", "XOM"]
@@ -104,24 +107,34 @@ class SpikeTests(unittest.TestCase):
             self.assertTrue(path.exists())
 
 
-@unittest.skipUnless(HAS_TENSORFLOW, "TensorFlow is not installed")
 class PlatformScoringTests(unittest.TestCase):
-    """Tiny untrained models stand in for the saved ones, so no models/ folder is needed."""
+    """Tiny untrained models stand in for the saved ones, so no models/ folder is needed.
+
+    They are Keras models where TensorFlow is installed and FakeLstm stand-ins
+    otherwise, so CI checks the scoring windows and dates too. The real-data
+    training rows come from synthetic snapshots.
+    """
 
     @classmethod
     def setUpClass(cls):
-        from stock_forecast.lstm_model import build_direction_lstm, save_artifacts
-        from stock_forecast.windows import fit_scalers
-
         cls.folder = tempfile.TemporaryDirectory()
         root = Path(cls.folder.name)
         write_platform(root / "platform")
-        cls.data = platform_dataset(load_platform_prices(root / "platform"), "AAPL")
-        for name, cols in (("direction", config.DIRECTION_FEATURES), ("volatility", config.VOLATILITY_FEATURES)):
-            model = build_direction_lstm(lookback=10, n_features=len(cols), units=2, base_rate=0.5)
-            save_artifacts(model, fit_scalers(cls.data, tuple(cols)), root / name)
+        cls.prices = load_platform_prices(root / "platform")
+        cls.data = platform_dataset(cls.prices, "AAPL")
         cls.patches = [mock.patch.object(config, "DIRECTION_MODEL_DIR", root / "direction"),
-                       mock.patch.object(config, "VOLATILITY_MODEL_DIR", root / "volatility")]
+                       mock.patch.object(config, "VOLATILITY_MODEL_DIR", root / "volatility"), *snapshot_patches(root)]
+        fake = None if HAS_TENSORFLOW else FakeLstm()
+        for name, cols in (("direction", config.DIRECTION_FEATURES), ("volatility", config.VOLATILITY_FEATURES)):
+            scalers = fit_scalers(cls.data, tuple(cols))
+            if fake is None:
+                from stock_forecast.lstm_model import build_direction_lstm, save_artifacts
+
+                model = build_direction_lstm(lookback=10, n_features=len(cols), units=2, base_rate=0.5)
+                save_artifacts(model, scalers, root / name)
+            else:
+                fake.save(root / name, 10, scalers)
+        cls.patches += [fake] if fake else []
         for patch in cls.patches:
             patch.start()
 
@@ -161,6 +174,37 @@ class PlatformScoringTests(unittest.TestCase):
         after = pd.DataFrame(platform_rows(changed)[0])
         recal = (before["variant"] == "recalibrated") & (before["task"] == "volatility")
         self.assertEqual(set(before[recal]["threshold"]), set(after[recal]["threshold"]))
+
+    def test_calibration_rows_score_every_symbol_and_add_the_platform_lstm_when_asked(self):
+        load = lambda: self.prices  # noqa: E731
+        plain = calibration_rows(["AAPL", "MSFT"], load=load, verbose=0)
+        self.assertEqual(set(plain["symbol"]), {"AAPL", "MSFT"})
+        self.assertEqual(set(plain["variant"]), set(NO_RETRAIN_VARIANTS))
+        with FakeLstm(modules=("pooled",)):  # the platform LSTM is trained on the spot; a stand-in keeps this fast
+            extra = calibration_rows(["AAPL", "MSFT"], with_platform_lstm=True, load=load, verbose=0)
+        lstm = extra[extra["variant"] == PLATFORM_LSTM]
+        self.assertEqual(set(lstm["symbol"]), {"AAPL", "MSFT"})
+        # Trained on days to the validation end, so it is scored only on the months after it.
+        self.assertGreater(min(lstm["month"]), config.PLATFORM_LSTM_VAL_END[:7])
+
+
+class HorizonCalibrationRowsTests(unittest.TestCase):
+    def setUp(self):
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        write_platform(Path(folder.name))
+        prices = load_platform_prices(Path(folder.name))
+        self.load = lambda: prices
+
+    def test_every_symbol_is_scored_and_the_platform_lstm_joins_when_asked(self):
+        plain = horizon_calibration_rows(3, load=self.load, verbose=0)
+        self.assertEqual(set(plain["symbol"]), set(SYMBOLS))
+        self.assertNotIn(PLATFORM_LSTM, set(plain["variant"]))
+        with FakeLstm() as fake:
+            extra = horizon_calibration_rows(3, ["AAPL"], with_platform_lstm=True, load=self.load, verbose=0)
+        self.assertEqual(len(fake.fits), 1)
+        self.assertIn(PLATFORM_LSTM, set(extra["variant"]))
+        self.assertEqual(set(extra["symbol"]), {"AAPL"})
 
 
 if __name__ == "__main__":

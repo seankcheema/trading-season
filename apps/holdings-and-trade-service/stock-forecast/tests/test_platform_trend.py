@@ -192,26 +192,47 @@ class DocumentTests(unittest.TestCase):
             build_trend(self.dailies, {"AAPL": self.probs["AAPL"]}, H)
 
     def test_contract_breaches_are_rejected(self):
-        broken = json.loads(json.dumps(self.document))
-        broken["symbols"]["AAPL"]["days"][0]["call"] = "sideways"
-        with self.assertRaises(ValueError):
-            validate_trend(broken)
-        broken = json.loads(json.dumps(self.document))
-        broken["symbols"]["AAPL"]["days"][0]["move"] = None
-        with self.assertRaises(ValueError):
-            validate_trend(broken)
-        broken = json.loads(json.dumps(self.document))
-        broken["symbols"]["AAPL"]["days"][0]["signal"] = "sideways"
-        with self.assertRaises(ValueError):
-            validate_trend(broken)
-        broken = json.loads(json.dumps(self.document))
-        broken["symbols"]["AAPL"]["days"][-1]["signalDays"] = broken["symbols"]["AAPL"]["days"][-1]["modelDays"] + 1
-        with self.assertRaises(ValueError):
-            validate_trend(broken)
-        broken = json.loads(json.dumps(self.document))
-        del broken["notice"]
-        with self.assertRaises(ValueError):
-            validate_trend(broken)
+        # Each breaks one rule of the contract with the UI; doc is a copy, entry its AAPL symbol, day its first day.
+        breaches = {
+            "missing notice": lambda doc, entry, day: doc.pop("notice"),
+            "no symbols": lambda doc, entry, day: doc.update(symbols={}),
+            "no days": lambda doc, entry, day: entry.update(days=[]),
+            "out of order": lambda doc, entry, day: entry["days"].reverse(),
+            "repeated day": lambda doc, entry, day: entry["days"][1].update(date=day["date"]),
+            "wrong last day": lambda doc, entry, day: entry.update(lastDay="1999-01-01"),
+            "extra field": lambda doc, entry, day: day.update(extra=1),
+            "probability out of range": lambda doc, entry, day: day.update(probability=-0.1),
+            "unknown call": lambda doc, entry, day: day.update(call="sideways"),
+            "outcome without its move": lambda doc, entry, day: day.update(move=None),
+            "hits exceed days": lambda doc, entry, day: day.update(ruleHits=day["ruleDays"] + 1),
+            "unknown signal": lambda doc, entry, day: day.update(signal="sideways"),
+            "negative strength": lambda doc, entry, day: day.update(strength=-1.0),
+            "signal days exceed model days": lambda doc, entry, day: entry["days"][-1].update(
+                signalDays=entry["days"][-1]["modelDays"] + 1),
+        }
+        for name, breach in breaches.items():
+            with self.subTest(name):
+                broken = json.loads(json.dumps(self.document))
+                entry = broken["symbols"]["AAPL"]
+                breach(broken, entry, entry["days"][0])
+                with self.assertRaises(ValueError):
+                    validate_trend(broken)
+
+    def test_export_scores_every_symbol_and_writes_the_file_it_validated(self):
+        from unittest import mock
+
+        import stock_forecast.platform_trend as module
+
+        data, close = platform_like(), platform_close()
+        prices = {"AAPL": pd.DataFrame({"Close": close}), "MSFT": pd.DataFrame({"Close": close})}
+        with tempfile.TemporaryDirectory() as folder, \
+                mock.patch.object(module, "platform_dataset", side_effect=lambda prices, symbol: data), \
+                mock.patch.object(module.config, "PLATFORM_TREND_JSON", Path(folder) / "trend.json"):
+            document, path = module.export_trend(H, load=lambda: prices)
+            self.assertEqual(path, Path(folder) / "trend.json")  # the real file is never touched
+            self.assertEqual(json.loads(path.read_text()), json.loads(json.dumps(document)))
+        self.assertEqual(sorted(document["symbols"]), ["AAPL", "MSFT"])
+        self.assertTrue(all(day["date"] >= "2026-07" for day in document["symbols"]["AAPL"]["days"]))
 
     def test_summary_reads_the_final_record_and_the_moves_after_each_call(self):
         table = summarise_trend(self.document).set_index("symbol")

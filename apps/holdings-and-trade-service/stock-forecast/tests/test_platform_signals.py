@@ -74,18 +74,27 @@ class DocumentTests(unittest.TestCase):
             build_signals(self.datasets, {"AAPL": self.probs["AAPL"]}, H)
 
     def test_contract_breaches_are_rejected(self):
-        broken = json.loads(json.dumps(self.document))
-        broken["symbols"]["AAPL"]["days"][0]["probability"] = 1.5
-        with self.assertRaises(ValueError):
-            validate_signals(broken)
-        broken = json.loads(json.dumps(self.document))
-        broken["symbols"]["AAPL"]["days"][0]["extra"] = 1
-        with self.assertRaises(ValueError):
-            validate_signals(broken)
-        broken = json.loads(json.dumps(self.document))
-        broken["symbols"]["AAPL"]["days"].reverse()
-        with self.assertRaises(ValueError):
-            validate_signals(broken)
+        # Each breaks one rule of the contract with the UI; doc is a copy, entry its AAPL symbol, day its first day.
+        breaches = {
+            "missing key": lambda doc, entry, day: doc.pop("model"),
+            "no symbols": lambda doc, entry, day: doc.update(symbols={}),
+            "no days": lambda doc, entry, day: entry.update(days=[]),
+            "out of order": lambda doc, entry, day: entry["days"].reverse(),
+            "repeated day": lambda doc, entry, day: entry["days"][1].update(date=day["date"]),
+            "wrong first day": lambda doc, entry, day: entry.update(firstDay="1999-01-01"),
+            "extra field": lambda doc, entry, day: day.update(extra=1),
+            "probability out of range": lambda doc, entry, day: day.update(probability=1.5),
+            "unknown call": lambda doc, entry, day: day.update(call="sideways"),
+            "unknown outcome": lambda doc, entry, day: day.update(outcome="sideways"),
+            "hits exceed days": lambda doc, entry, day: day.update(modelHits=day["modelDays"] + 1),
+        }
+        for name, breach in breaches.items():
+            with self.subTest(name):
+                broken = json.loads(json.dumps(self.document))
+                entry = broken["symbols"]["AAPL"]
+                breach(broken, entry, entry["days"][0])
+                with self.assertRaises(ValueError):
+                    validate_signals(broken)
 
     def test_summary_reads_the_final_record(self):
         table = summarise_signals(self.document).set_index("symbol")
@@ -183,6 +192,12 @@ class CallLineTests(unittest.TestCase):
         self.assertEqual(seen["seeds"], 3)
         self.assertIn("3 LSTMs", document["model"])
         self.assertEqual(sorted(document["callLines"])[0], "2026-07")
+
+    def test_export_rejects_bad_settings_before_loading_any_prices(self):
+        import stock_forecast.platform_signals as module
+        for settings in ({"retrain": "weekly"}, {"seeds": 0}):
+            with self.subTest(**settings), self.assertRaises(ValueError):
+                module.export_signals(H, load=lambda: self.fail("prices were loaded"), **settings)
 
 
 if __name__ == "__main__":

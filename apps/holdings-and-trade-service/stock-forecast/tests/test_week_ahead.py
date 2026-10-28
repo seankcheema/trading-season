@@ -1,12 +1,16 @@
 import subprocess
 import sys
+import tempfile
 import unittest
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from stock_forecast import config
-from stock_forecast.week_ahead import MODEL, RULE, most_confident, past_volatility, score_period
+from stock_forecast.week_ahead import (MODEL, RULE, final_test_period, most_confident, past_volatility, score_period,
+                                       walk_forward_rows, week_ahead_dataset)
+from tests.helpers import snapshot_patches
 
 
 def frame(n: int = 900, seed: int = 0) -> pd.DataFrame:
@@ -85,6 +89,42 @@ class MostConfidentTests(unittest.TestCase):
     def test_rejects_a_count_outside_the_buckets(self):
         with self.assertRaises(ValueError):
             most_confident(pd.DataFrame({"days": [1], "accuracy": [1.0]}), 2)
+
+
+class WeekAheadRunTests(unittest.TestCase):
+    """The walk-forward and the test period on synthetic snapshots, so no real data is read."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.folder = tempfile.TemporaryDirectory()
+        cls.patches = snapshot_patches(Path(cls.folder.name))
+        for patch in cls.patches:
+            patch.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        for patch in cls.patches:
+            patch.stop()
+        cls.folder.cleanup()
+
+    def test_dataset_adds_the_rules_input_from_past_days_only(self):
+        data = week_ahead_dataset()
+        np.testing.assert_allclose(data["past_vol"], past_volatility(data["ret"], config.WEEK_AHEAD_HORIZON),
+                                   equal_nan=True)
+
+    def test_walk_forward_scores_each_year_and_never_reads_the_test_years(self):
+        table = walk_forward_rows()
+        self.assertEqual(list(table["model"]), [MODEL, RULE] * len(config.WALK_FORWARD_YEARS))
+        self.assertEqual(list(dict.fromkeys(table["split"])), [f"walk-forward {y}" for y in config.WALK_FORWARD_YEARS])
+        self.assertLessEqual(table["last_day"].max(), config.VAL_END)
+
+    def test_final_test_scores_from_the_test_start_with_every_day_in_a_bucket(self):
+        rows, buckets = final_test_period()
+        self.assertEqual(list(rows["model"]), [MODEL, RULE])
+        self.assertEqual(set(rows["split"]), {"test"})
+        self.assertGreaterEqual(rows["first_day"].min(), config.TEST_START)
+        self.assertEqual(len(buckets), config.CONFIDENCE_BUCKETS)
+        self.assertEqual(int(buckets["days"].sum()), int(rows["days"].iloc[0]))
 
 
 class TestRunGuardTests(unittest.TestCase):

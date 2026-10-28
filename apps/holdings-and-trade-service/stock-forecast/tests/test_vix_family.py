@@ -1,11 +1,14 @@
+import tempfile
 import unittest
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from stock_forecast import config
 from stock_forecast.data import add_earnings, add_indicators, add_vix, add_vix_family, add_vix_gap
-from tests.helpers import make_dataset, make_prices
+from stock_forecast.vix_family import vix_family_dataset, vix_family_rows
+from tests.helpers import FakeLstm, make_dataset, make_prices, snapshot_patches
 
 
 def family(drop_day=None):
@@ -77,6 +80,38 @@ class EarningsFlagTests(unittest.TestCase):
     def test_reports_outside_the_data_are_ignored(self):
         self.assertEqual(self.flagged("1990-01-02 16:00:00-05:00", "2040-01-02 16:00:00-05:00"), [])
         self.assertEqual(add_earnings(self.data, pd.Series([], dtype=object)).shape[0], len(self.data))
+
+
+
+class VixFamilyRowsTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.folder = tempfile.TemporaryDirectory()
+        cls.patches = snapshot_patches(Path(cls.folder.name))
+        for patch in cls.patches:
+            patch.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        for patch in cls.patches:
+            patch.stop()
+        cls.folder.cleanup()
+
+    def test_earnings_flag_is_added_only_where_dates_are_saved(self):
+        self.assertIn("earnings_next", vix_family_dataset("AAPL"))
+        self.assertNotIn("earnings_next", vix_family_dataset("SPY"))
+
+    def test_every_variant_is_scored_each_walk_forward_year(self):
+        with FakeLstm() as fake:
+            table = pd.DataFrame(vix_family_rows(["AAPL", "SPY"]))
+        years = {f"walk-forward {y}" for y in config.WALK_FORWARD_YEARS}
+        self.assertEqual(set(table["split"]), years)
+        aapl, spy = (set(table[table["symbol"] == s]["model"]) for s in ("AAPL", "SPY"))
+        self.assertIn("Average of both + VIX family + gap + earnings", aapl)
+        self.assertIn("Average of both + VIX family + gap", spy)
+        self.assertFalse(any("earnings" in model for model in spy))
+        # One LSTM per variant: four for AAPL (with earnings) and three for SPY, every year.
+        self.assertEqual(len(fake.fits), 7 * len(years))
 
 
 if __name__ == "__main__":

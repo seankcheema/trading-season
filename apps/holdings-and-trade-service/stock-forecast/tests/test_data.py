@@ -1,10 +1,14 @@
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
 
 import numpy as np
+import pandas as pd
 
-from stock_forecast.data import add_features, build_dataset, load_prices, save_prices, split_by_date
+from stock_forecast.data import (add_features, build_dataset, download_earnings_dates, download_prices, load_prices,
+                                 save_prices, split_by_date)
 from stock_forecast import config
 from tests.helpers import make_dataset, make_prices
 
@@ -89,6 +93,11 @@ class SplitByDateTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             split_by_date(dataset)
 
+    def test_duplicate_dates_are_rejected(self):
+        dataset = make_dataset()
+        with self.assertRaises(ValueError):
+            split_by_date(pd.concat([dataset.iloc[:1], dataset]))
+
 
 class SaveLoadTests(unittest.TestCase):
     # Snapshot checks protect reproducibility and reject accidental replacement.
@@ -114,6 +123,57 @@ class SaveLoadTests(unittest.TestCase):
             make_prices().drop(columns=["Volume"]).to_csv(path)
             with self.assertRaises(ValueError):
                 load_prices(path)
+
+    def test_load_rejects_repeated_dates_and_missing_closes(self):
+        prices = make_prices()
+        missing_close = prices.copy()
+        missing_close.iloc[5, missing_close.columns.get_loc("Close")] = np.nan
+        for name, broken in (("repeated", pd.concat([prices.iloc[:1], prices])), ("no close", missing_close)):
+            with self.subTest(name), tempfile.TemporaryDirectory() as folder:
+                path = Path(folder) / "prices.csv"
+                broken.to_csv(path)
+                with self.assertRaises(ValueError):
+                    load_prices(path)
+
+
+def fake_yfinance(prices=None, events=None):
+    """A stand-in for the yfinance module, so the download checks run offline."""
+    ticker = SimpleNamespace(get_earnings_dates=lambda limit: events)
+    return SimpleNamespace(download=lambda *args, **kwargs: prices, Ticker=lambda symbol: ticker)
+
+
+class DownloadTests(unittest.TestCase):
+    # A failed download must stop the pipeline, never hand back partial or invented data.
+    def download(self, prices):
+        with mock.patch.dict("sys.modules", {"yfinance": fake_yfinance(prices=prices)}):
+            return download_prices("AAPL")
+
+    def test_keeps_the_required_columns_with_a_date_index(self):
+        prices = make_prices().assign(Extra=1.0)
+        prices.index.name = None
+        frame = self.download(prices)
+        self.assertEqual(list(frame.columns), ["Open", "High", "Low", "Close", "Volume"])
+        self.assertEqual(frame.index.name, "Date")
+
+    def test_empty_or_incomplete_downloads_raise(self):
+        for name, prices in (("nothing", None), ("empty", pd.DataFrame()),
+                             ("no volume", make_prices().drop(columns=["Volume"]))):
+            with self.subTest(name), self.assertRaises(RuntimeError):
+                self.download(prices)
+
+    def test_earnings_keep_only_the_announcement_times_oldest_first(self):
+        stamps = pd.DatetimeIndex(["2024-05-02 16:30", "2024-02-01 16:30"], tz="America/New_York")
+        events = pd.DataFrame({"Reported EPS": [1.5, 2.1]}, index=stamps)
+        with mock.patch.dict("sys.modules", {"yfinance": fake_yfinance(events=events)}):
+            frame = download_earnings_dates("AAPL")
+        self.assertEqual(list(frame.columns), ["announced_at"])
+        self.assertEqual(list(frame["announced_at"]), sorted(stamps))
+
+    def test_no_earnings_dates_raise(self):
+        for events in (None, pd.DataFrame()):
+            with mock.patch.dict("sys.modules", {"yfinance": fake_yfinance(events=events)}), \
+                    self.assertRaises(RuntimeError):
+                download_earnings_dates("AAPL")
 
 
 if __name__ == "__main__":
