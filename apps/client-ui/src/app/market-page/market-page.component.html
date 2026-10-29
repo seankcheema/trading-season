@@ -26,13 +26,14 @@
         <app-dashboard-header-dropdown
           data-testid="profile-dropdown"
           ariaLabel="Open profile menu"
+          [label]="profileInitials()"
           [open]="openHeaderDropdown() === 'profile'"
           (openChange)="openHeaderDropdown.set($event ? 'profile' : null)"
           containerClass="shrink-0"
           triggerClass="bg-primary/15 text-primary hover:bg-primary/25 size-9 justify-center rounded-full text-xs font-semibold"
           panelClass="w-48 p-1"
         >
-          <span dropdownTrigger data-testid="profile-initials">{{ profileInitials() }}</span>
+          <span dropdownTrigger data-testid="profile-initials" aria-hidden="true">{{ profileInitials() }}</span>
           <div role="menu" aria-label="Profile">
             <button
               type="button"

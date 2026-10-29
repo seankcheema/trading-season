@@ -32,6 +32,15 @@ describe('DashboardHeaderDropdownComponent keyboard interaction', () => {
     expect(event.defaultPrevented).toBe(true);
   });
 
+  it('names the trigger by its purpose and its current value, so the visible text is in the name', () => {
+    const fixture = TestBed.createComponent(DropdownHost);
+    fixture.detectChanges();
+    const summary: HTMLElement = fixture.nativeElement.querySelector('summary');
+
+    expect(summary.getAttribute('aria-label')).toBe('Select account: Trading');
+    expect(summary.getAttribute('aria-label')).toContain(summary.textContent!.trim());
+  });
+
   it('lets Escape propagate when the dropdown is already closed', () => {
     const fixture = TestBed.createComponent(DropdownHost);
     fixture.componentInstance.open.set(false);

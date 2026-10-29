@@ -12,7 +12,7 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
         <p class="text-muted-foreground mt-0.5 text-xs">{{ subtitle() }}</p>
       }
     </div>
-    <div class="flex items-center gap-2"><ng-content /></div>
+    <div class="flex max-w-full flex-wrap items-center gap-2"><ng-content /></div>
   `,
 })
 export class PageHeaderComponent {

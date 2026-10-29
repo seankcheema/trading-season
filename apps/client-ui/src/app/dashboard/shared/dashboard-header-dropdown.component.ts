@@ -7,7 +7,7 @@ import { NgIcon } from '@ng-icons/core';
   imports: [NgIcon],
   template: `
     <details [class]="containerClasses()" [open]="open()" (toggle)="onToggle($event)" (keydown.escape)="onEscape($event)">
-      <summary [class]="triggerClasses()" [attr.aria-label]="ariaLabel()">
+      <summary [class]="triggerClasses()" [attr.aria-label]="triggerName()">
         <ng-content select="[dropdownTrigger]">
           <ng-icon [name]="iconName()" class="shrink-0 text-[16px]" />
           @if (loading()) {
@@ -49,6 +49,12 @@ export class DashboardHeaderDropdownComponent {
   readonly triggerClass = input('');
   readonly panelClass = input('');
   readonly openChange = output<boolean>();
+
+  // A name that replaces the visible text has to contain it (WCAG 2.5.3, Label in Name), so
+  // the control is named by its purpose and its current value, "Select account: Investing".
+  protected readonly triggerName = computed(() =>
+    this.label() ? `${this.ariaLabel()}: ${this.label()}` : this.ariaLabel(),
+  );
 
   protected readonly containerClasses = computed(() =>
     ['header-dropdown relative min-w-0 max-w-[calc(100vw-2rem)]', this.containerClass()]

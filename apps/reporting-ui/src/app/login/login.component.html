@@ -62,7 +62,7 @@
               [type]="showPassword() ? 'text' : 'password'"
               autocomplete="current-password"
               placeholder="••••••••"
-              class="auth-input"
+              class="auth-input pr-10"
               formControlName="password"
               [attr.aria-invalid]="form.controls.password.invalid && form.controls.password.touched"
               [attr.aria-describedby]="
@@ -73,7 +73,7 @@
             />
             <button
               type="button"
-              class="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 flex -translate-y-1/2 cursor-pointer items-center justify-center border-0 bg-transparent p-0 transition-colors"
+              class="text-muted-foreground hover:text-foreground absolute top-1/2 right-1 flex size-8 -translate-y-1/2 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent p-0 transition-colors"
               (click)="togglePasswordVisibility()"
               [attr.aria-label]="showPassword() ? 'Hide password' : 'Show password'"
             >

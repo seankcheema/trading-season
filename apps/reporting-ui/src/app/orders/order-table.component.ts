@@ -59,7 +59,7 @@ export const ORDER_TABLE_MIN_WIDTH = 880;
               <button
                 type="button"
                 class="row-button order-grid whitespace-nowrap"
-                [attr.aria-label]="'Open order ' + order.orderId"
+                aria-haspopup="dialog"
                 (click)="opened.emit(order)"
               >
                 <ng-container [ngTemplateOutlet]="cells" [ngTemplateOutletContext]="{ $implicit: row }" />

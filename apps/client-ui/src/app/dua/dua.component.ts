@@ -194,6 +194,14 @@ export class DuaComponent {
   protected readonly hovered = signal(false);
   protected readonly focused = signal(false);
   protected readonly hasUpdates = computed(() => this.unreadCount() > 0);
+
+  // The launcher shows "Ask Dua" beside it and a count on it, so its name has to contain both
+  // (WCAG 2.5.3, Label in Name): a speech user says what they see.
+  protected readonly launcherName = computed(() =>
+    this.hasUpdates() && this.session.minimized()
+      ? `Ask Dua ${this.unreadCount()} new insight updates`
+      : 'Ask Dua',
+  );
   // The Ask Dua label beside the closed launcher. Not on a stock's page, where it would sit on
   // the order ticket, and not while Dua is speaking, whose bubble takes the same place.
   protected readonly showPill = computed(

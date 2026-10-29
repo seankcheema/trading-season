@@ -153,10 +153,10 @@ test('view all opens every transaction, including cash, and filters by type', as
 });
 
 test('export downloads the filtered statement as CSV and as a PDF', async ({ page }, testInfo) => {
-  const launcher = page.getByRole('button', { name: 'Dua insights', exact: true });
+  const launcher = page.getByRole('button', { name: /^Ask Dua/ });
   const dua = page.getByRole('region', { name: 'Dua insights' });
   await launcher.click();
-  await dua.getByRole('button', { name: 'Daily Review', exact: true }).click();
+  await dua.getByRole('button', { name: /^Daily Review/ }).click();
   await expect(dua).toContainText('Your performance');
   await page.getByTestId('open-transactions').click();
   await expect(dua).toBeHidden();

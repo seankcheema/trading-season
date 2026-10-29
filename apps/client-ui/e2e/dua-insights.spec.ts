@@ -29,9 +29,9 @@ test('compact daily review keeps currency and arrows together and details visibl
   await loginPage.goto();
   await loginPage.signIn(USER.email, USER.password);
   const panel = page.getByRole('region', { name: 'Dua insights' });
-  await page.getByRole('button', { name: 'Dua insights', exact: true }).click();
-  await expect(panel.getByRole('button', { name: 'Daily Review', exact: true })).toBeEnabled();
-  await panel.getByRole('button', { name: 'Daily Review', exact: true }).click();
+  await page.getByRole('button', { name: /^Ask Dua/ }).click();
+  await expect(panel.getByRole('button', { name: /^Daily Review/ })).toBeEnabled();
+  await panel.getByRole('button', { name: /^Daily Review/ }).click();
   const active = panel.locator('.insight-card:not(.inactive)');
   await expect(active).toContainText('Your holdings');
   await panel.getByRole('button', { name: 'Next insight', exact: true }).click();
@@ -78,30 +78,27 @@ test('market auto-opens three choices, preserves dismissal and removes Outlook t
   await loginPage.goto();
   await loginPage.signIn(USER.email, USER.password);
   // Wait for sign-in to land before navigating, or the visit can race the redirect.
-  await expect(page.getByRole('button', { name: 'Dua insights', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Ask Dua/ })).toBeVisible();
   await page.goto('/dashboard/markets/aapl');
   const panel = page.getByRole('region', { name: 'Dua insights' });
   await expect(panel).toBeVisible();
   await expect(panel.locator('.choices button')).toHaveCount(3);
-  await expect(panel.locator('.choices button').first()).toHaveAttribute(
-    'aria-label',
-    'This Stock',
-  );
+  await expect(panel.locator('.choices button').first()).toContainText('This Stock');
   await expect(page.getByRole('tab', { name: 'Outlook', exact: true })).toHaveCount(0);
-  await expect(panel.getByRole('button', { name: 'This Stock', exact: true })).toBeEnabled();
-  await panel.getByRole('button', { name: 'This Stock', exact: true }).click();
+  await expect(panel.getByRole('button', { name: /^This Stock/ })).toBeEnabled();
+  await panel.getByRole('button', { name: /^This Stock/ }).click();
   await expect(panel).not.toContainText('Open the full');
   await expect(panel).not.toContainText('+24.8%');
   await panel.getByRole('button', { name: 'Minimize Dua', exact: true }).click();
   await expect(panel).toBeHidden();
-  await page.getByRole('button', { name: 'Dua insights', exact: true }).click();
+  await page.getByRole('button', { name: /^Ask Dua/ }).click();
   await panel.getByRole('button', { name: 'Back to choices', exact: true }).click();
-  await expect(panel.getByRole('button', { name: 'This Stock', exact: true })).not.toHaveClass(
+  await expect(panel.getByRole('button', { name: /^This Stock/ })).not.toHaveClass(
     /unread/,
   );
   await page.reload();
   await expect(panel).toBeVisible();
-  await expect(panel.getByRole('button', { name: 'This Stock', exact: true })).not.toHaveClass(
+  await expect(panel.getByRole('button', { name: /^This Stock/ })).not.toHaveClass(
     /unread/,
   );
 });
@@ -114,7 +111,7 @@ test('legacy outlook links show inline details and respect reduced motion', asyn
   await loginPage.goto();
   await loginPage.signIn(USER.email, USER.password);
   // Wait for sign-in to land before navigating, or the visit can race the redirect.
-  await expect(page.getByRole('button', { name: 'Dua insights', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Ask Dua/ })).toBeVisible();
   await page.goto('/dashboard/markets/aapl?tab=outlook');
   const panel = page.getByRole('region', { name: 'Dua insights' });
   const card = panel.locator('.insight-card:not(.inactive)');

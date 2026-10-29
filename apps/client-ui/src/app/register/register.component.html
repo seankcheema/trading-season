@@ -36,9 +36,10 @@
                 placeholder="Jane"
                 class="rounded-[5px]"
                 formControlName="firstName"
+                [attr.aria-describedby]="form.controls.firstName.invalid && form.controls.firstName.touched ? 'firstName-error' : null"
               />
               @if (form.controls.firstName.invalid && form.controls.firstName.touched) {
-                <p class="text-destructive text-sm">First name is required.</p>
+                <p id="firstName-error" class="text-destructive text-sm">First name is required.</p>
               }
             </div>
 
@@ -66,9 +67,10 @@
               placeholder="Doe"
               class="rounded-[5px]"
               formControlName="lastName"
+              [attr.aria-describedby]="form.controls.lastName.invalid && form.controls.lastName.touched ? 'lastName-error' : null"
             />
             @if (form.controls.lastName.invalid && form.controls.lastName.touched) {
-              <p class="text-destructive text-sm">Last name is required.</p>
+              <p id="lastName-error" class="text-destructive text-sm">Last name is required.</p>
             }
           </div>
 
@@ -87,10 +89,11 @@
                 placeholder="you@example.com"
                 class="rounded-[5px] pl-8"
                 formControlName="email"
+                [attr.aria-describedby]="form.controls.email.invalid && form.controls.email.touched ? 'email-error' : null"
               />
             </div>
             @if (form.controls.email.invalid && form.controls.email.touched) {
-              <p class="text-destructive text-sm">Enter a valid email address.</p>
+              <p id="email-error" class="text-destructive text-sm">Enter a valid email address.</p>
             }
           </div>
 
@@ -104,12 +107,17 @@
                 autocomplete="bday"
                 class="rounded-[5px]"
                 formControlName="dateOfBirth"
+                [attr.aria-describedby]="
+                  form.controls.dateOfBirth.touched && form.controls.dateOfBirth.invalid
+                    ? 'dateOfBirth-error'
+                    : null
+                "
               />
               @if (form.controls.dateOfBirth.touched) {
                 @if (form.controls.dateOfBirth.hasError('required')) {
-                  <p class="text-destructive text-sm">Date of birth is required.</p>
+                  <p id="dateOfBirth-error" class="text-destructive text-sm">Date of birth is required.</p>
                 } @else if (form.controls.dateOfBirth.hasError('underage')) {
-                  <p class="text-destructive text-sm">You must be at least {{ minimumAge }} to sign up.</p>
+                  <p id="dateOfBirth-error" class="text-destructive text-sm">You must be at least {{ minimumAge }} to sign up.</p>
                 }
               }
             </div>
@@ -125,13 +133,14 @@
                   autocomplete="off"
                   maxlength="11"
                   placeholder="XXX-XX-XXXX"
-                  class="rounded-[5px] pr-8"
+                  class="rounded-[5px] pr-10"
                   formControlName="ssn"
+                  [attr.aria-describedby]="form.controls.ssn.invalid && form.controls.ssn.touched ? 'ssn-error' : null"
                   (input)="onSsnInput($event)"
                 />
                 <button
                   type="button"
-                  class="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 flex -translate-y-1/2 cursor-pointer items-center justify-center border-0 bg-transparent p-0 transition-colors"
+                  class="text-muted-foreground hover:text-foreground absolute top-1/2 right-1 flex size-8 -translate-y-1/2 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent p-0 transition-colors"
                   (click)="toggleSsnVisibility()"
                   [attr.aria-label]="showSsn() ? 'Hide SSN' : 'Show SSN'"
                 >
@@ -139,7 +148,7 @@
                 </button>
               </div>
               @if (form.controls.ssn.invalid && form.controls.ssn.touched) {
-                <p class="text-destructive text-sm">Enter SSN as XXX-XX-XXXX.</p>
+                <p id="ssn-error" class="text-destructive text-sm">Enter SSN as XXX-XX-XXXX.</p>
               }
             </div>
           </div>
@@ -159,10 +168,11 @@
                 placeholder="123 Main St, Springfield"
                 class="rounded-[5px] pl-8"
                 formControlName="address"
+                [attr.aria-describedby]="form.controls.address.invalid && form.controls.address.touched ? 'address-error' : null"
               />
             </div>
             @if (form.controls.address.invalid && form.controls.address.touched) {
-              <p class="text-destructive text-sm">Address is required.</p>
+              <p id="address-error" class="text-destructive text-sm">Address is required.</p>
             }
           </div>
 
@@ -195,6 +205,7 @@
                 placeholder="5000"
                 class="rounded-[5px] pl-8"
                 formControlName="availableFunds"
+                [attr.aria-describedby]="form.controls.availableFunds.invalid && form.controls.availableFunds.touched ? 'availableFunds-error' : null"
                 (keydown)="onAvailableFundsKeydown($event)"
               />
             </div>
@@ -203,7 +214,7 @@
               minimum of $5,000 is required to open an account.
             </p>
             @if (form.controls.availableFunds.invalid && form.controls.availableFunds.touched) {
-              <p class="text-destructive text-sm">Enter at least $5,000.</p>
+              <p id="availableFunds-error" class="text-destructive text-sm">Enter at least $5,000.</p>
             }
           </div>
 
@@ -220,19 +231,20 @@
                 [type]="showPassword() ? 'text' : 'password'"
                 autocomplete="new-password"
                 placeholder="••••••••"
-                class="rounded-[5px] px-8"
+                class="rounded-[5px] pr-10 pl-8"
                 formControlName="password"
+                aria-describedby="password-requirements"
               />
               <button
                 type="button"
-                class="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 flex -translate-y-1/2 cursor-pointer items-center justify-center border-0 bg-transparent p-0 transition-colors"
+                class="text-muted-foreground hover:text-foreground absolute top-1/2 right-1 flex size-8 -translate-y-1/2 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent p-0 transition-colors"
                 (click)="togglePasswordVisibility()"
                 [attr.aria-label]="showPassword() ? 'Hide password' : 'Show password'"
               >
                 <ng-icon [name]="showPassword() ? 'lucideEyeOff' : 'lucideEye'" class="text-[16px]" />
               </button>
             </div>
-            <ul class="mt-1 flex flex-col gap-0.5">
+            <ul id="password-requirements" class="mt-1 flex flex-col gap-0.5">
               <li
                 class="flex items-center gap-1.5 text-xs"
                 [class.text-muted-foreground]="!hasMinLength()"
@@ -273,12 +285,18 @@
                 [type]="showConfirmPassword() ? 'text' : 'password'"
                 autocomplete="new-password"
                 placeholder="••••••••"
-                class="rounded-[5px] px-8"
+                class="rounded-[5px] pr-10 pl-8"
                 formControlName="confirmPassword"
+                [attr.aria-describedby]="
+                  form.controls.confirmPassword.touched &&
+                  (form.controls.confirmPassword.hasError('required') || form.errors?.['passwordMismatch'])
+                    ? 'confirmPassword-error'
+                    : null
+                "
               />
               <button
                 type="button"
-                class="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 flex -translate-y-1/2 cursor-pointer items-center justify-center border-0 bg-transparent p-0 transition-colors"
+                class="text-muted-foreground hover:text-foreground absolute top-1/2 right-1 flex size-8 -translate-y-1/2 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent p-0 transition-colors"
                 (click)="toggleConfirmPasswordVisibility()"
                 [attr.aria-label]="
                   showConfirmPassword() ? 'Hide confirmation password' : 'Show confirmation password'
@@ -290,8 +308,12 @@
                 />
               </button>
             </div>
-            @if (form.controls.confirmPassword.touched && form.errors?.['passwordMismatch']) {
-              <p class="text-destructive text-sm">Passwords do not match.</p>
+            @if (form.controls.confirmPassword.touched) {
+              @if (form.controls.confirmPassword.hasError('required')) {
+                <p id="confirmPassword-error" class="text-destructive text-sm">Confirm your password.</p>
+              } @else if (form.errors?.['passwordMismatch']) {
+                <p id="confirmPassword-error" class="text-destructive text-sm">Passwords do not match.</p>
+              }
             }
           </div>
 

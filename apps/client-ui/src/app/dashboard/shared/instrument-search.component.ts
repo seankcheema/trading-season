@@ -230,7 +230,7 @@ export class InstrumentSearchComponent {
     const size =
       this.size() === 'lg' ? `h-12 ${right} pl-12 text-base` : `h-11 ${right} pl-11 text-sm`;
     const base =
-      'border-border placeholder:text-muted-foreground focus-visible:border-ring block box-border w-full border py-0 transition-colors outline-none';
+      'border-field placeholder:text-muted-foreground focus-visible:border-ring block box-border w-full border py-0 transition-colors outline-none';
     const ring = this.action() ? ' focus-visible:ring-ring/50 focus-visible:ring-3' : '';
     return this.embedded()
       ? `${base} ${size} rounded-none border-x-0 border-t-0 bg-transparent`

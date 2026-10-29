@@ -128,13 +128,13 @@ test.describe('Theme', () => {
     await loginPage.goto();
     await loginPage.signIn(USER.email, USER.password);
     await page.getByRole('button', { name: 'Switch to light theme' }).click();
-    await page.getByRole('button', { name: 'Dua insights', exact: true }).click();
+    await page.getByRole('button', { name: /^Ask Dua/ }).click();
     const panel = page.getByRole('region', { name: 'Dua insights' });
     await expect(panel).toHaveCSS('background-color', 'rgb(255, 255, 255)');
     await expect(panel).toHaveCSS('color', 'rgb(14, 14, 14)');
 
     for (const choice of ['Daily Review', 'Portfolio Analysis']) {
-      await panel.getByRole('button', { name: choice, exact: true }).click();
+      await panel.getByRole('button', { name: new RegExp(`^${choice}`) }).click();
       const card = panel.locator('.insight-card:not(.inactive)');
       await expect(card.locator('h3')).toHaveCSS('color', 'rgb(14, 14, 14)');
       await expect(panel.locator('.dua-header')).toHaveCSS(
@@ -151,11 +151,11 @@ test.describe('Theme', () => {
       await panel.getByRole('button', { name: 'Back to choices' }).click();
     }
 
-    await panel.getByRole('button', { name: 'Daily Review', exact: true }).click();
+    await panel.getByRole('button', { name: /^Daily Review/ }).click();
     await page.getByRole('button', { name: 'Switch to dark theme' }).click();
     // The theme toggle is outside Dua, so it closes the panel without resetting its choice.
     await expect(panel).toBeHidden();
-    await page.getByRole('button', { name: 'Dua insights', exact: true }).click();
+    await page.getByRole('button', { name: /^Ask Dua/ }).click();
     await expect(panel.locator('.dua-header')).toHaveCSS('background-color', 'rgb(12, 14, 16)');
     await expect(panel.locator('.insight-card:not(.inactive) h3')).toHaveCSS(
       'color',

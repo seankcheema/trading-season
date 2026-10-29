@@ -80,7 +80,7 @@ const FILTERS: readonly { id: AssetFilter; label: string }[] = [
         </div>
         <input
           type="search"
-          class="border-input bg-input/30 placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-full max-w-[13.75rem] rounded-lg border px-3 text-sm outline-none focus-visible:ring-3"
+          class="border-field bg-input/30 placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-full max-w-[13.75rem] rounded-lg border px-3 text-sm outline-none focus-visible:ring-3"
           placeholder="Filter by symbol or name"
           aria-label="Filter by symbol or name"
           [value]="query()"
@@ -114,7 +114,7 @@ const FILTERS: readonly { id: AssetFilter; label: string }[] = [
                 <button
                   type="button"
                   class="assets-grid hover:bg-muted grid w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-2.5 text-left text-sm transition-colors"
-                  [attr.aria-label]="'Trade ' + row.symbol"
+                  aria-haspopup="dialog"
                   [attr.data-testid]="'assets-dialog-row-' + row.symbol"
                   (click)="selected.emit(row.instrument)"
                 >

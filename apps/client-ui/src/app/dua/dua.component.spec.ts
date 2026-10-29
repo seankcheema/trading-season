@@ -161,7 +161,12 @@ describe('Dua panel', () => {
       }
       const button = [...fixture.nativeElement.querySelectorAll('button')].find((b: unknown) => {
         const el = b as HTMLButtonElement;
-        return el.textContent?.trim().startsWith(name) || el.getAttribute('aria-label') === name;
+        return (
+          el.textContent?.trim().startsWith(name) ||
+          el.getAttribute('aria-label') === name ||
+          // The launcher is named for what it shows: "Ask Dua", and the unread count.
+          (name === 'Dua insights' && el.classList.contains('dua-launcher'))
+        );
       }) as HTMLButtonElement;
       button.click();
       fixture.detectChanges();
@@ -206,7 +211,7 @@ describe('Dua panel', () => {
     expect(session.minimized()).toBe(true);
     click('Dua insights');
     const choices = [...fixture.nativeElement.querySelectorAll('.choices button')].map((b: any) =>
-      b.getAttribute('aria-label'),
+      b.querySelector('.choice-title').childNodes[0].textContent.trim(),
     );
     expect(choices).toEqual(['Daily Review', 'Portfolio Analysis']);
   });
@@ -215,9 +220,11 @@ describe('Dua panel', () => {
     fixture.componentRef.setInput('symbol', 'AAPL');
     fixture.detectChanges();
     expect(session.minimized()).toBe(false);
-    expect(fixture.nativeElement.querySelector('.choices button').getAttribute('aria-label')).toBe(
-      'This Stock',
-    );
+    expect(
+      fixture.nativeElement
+        .querySelector('.choices button .choice-title')
+        .childNodes[0].textContent.trim(),
+    ).toBe('This Stock');
     expect(fixture.nativeElement.querySelectorAll('.choices button.unread')).toHaveLength(3);
   });
   it('opens by itself on the first stock page of a visit only, but for the order dialog every time it fits', () => {
@@ -250,6 +257,14 @@ describe('Dua panel', () => {
     } finally {
       resize(width);
     }
+  });
+  it('names the launcher for the label and the count it shows, so the visible text is in the name', () => {
+    const { fixture } = setup();
+    const launcher = fixture.nativeElement.querySelector('.dua-launcher') as HTMLElement;
+    const count = fixture.nativeElement.querySelector('.notification-count')?.textContent?.trim();
+    expect(count).toBeTruthy();
+    expect(launcher.getAttribute('aria-label')).toBe(`Ask Dua ${count} new insight updates`);
+    expect(launcher.hasAttribute('aria-description')).toBe(false);
   });
   it('labels the closed launcher Ask Dua on the dashboard, but not on a stock page or while open', () => {
     const { fixture, click } = setup();
@@ -498,7 +513,9 @@ describe('Dua panel', () => {
     click('Dua insights');
     const el = fixture.nativeElement as HTMLElement;
     const stock = el.querySelector('.choices button') as HTMLButtonElement;
-    expect(stock.getAttribute('aria-label')).toBe('This Stock');
+    // Named by its visible text, which WCAG 2.5.3 requires of a control whose label is shown.
+    expect(stock.hasAttribute('aria-label')).toBe(false);
+    expect(stock.querySelector('.choice-title')!.textContent!.trim()).toMatch(/^This Stock/);
     expect(stock.querySelector('small')!.textContent!.replace(/\s+/g, ' ').trim()).toBe(
       'Forecast What to consider next',
     );

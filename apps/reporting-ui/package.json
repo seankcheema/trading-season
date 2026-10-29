@@ -34,6 +34,7 @@
     "@angular/build": "21.2.25",
     "@angular/cli": "21.2.25",
     "@angular/compiler-cli": "21.2.25",
+    "@axe-core/playwright": "^4.14.0",
     "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "^24.19.2",

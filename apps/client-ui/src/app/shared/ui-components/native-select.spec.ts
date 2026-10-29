@@ -70,7 +70,7 @@ describe('HlmNativeSelect', () => {
     expect(wrapper.getAttribute('data-size')).toBe('default');
     expect(select.id).toBe('my-select');
     expect(select.value).toBe('a');
-    expect(select.className).toContain('border-input');
+    expect(select.className).toContain('border-field');
   });
 
   it('merges a custom selectClass and selectIconClass', () => {

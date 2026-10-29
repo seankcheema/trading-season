@@ -10,16 +10,18 @@ export const routes: Routes = [
     pathMatch: 'full',
     loadComponent: () => import('./landing/landing.component').then((m) => m.LandingComponent),
   },
-  { path: 'login', component: LoginComponent, canActivate: [guestGuard] },
-  { path: 'register', component: RegisterComponent, canActivate: [guestGuard] },
+  { path: 'login', title: 'Sign in', component: LoginComponent, canActivate: [guestGuard] },
+  { path: 'register', title: 'Create account', component: RegisterComponent, canActivate: [guestGuard] },
   {
     path: 'dashboard/markets/:symbol',
+    title: (route) => `${route.paramMap.get('symbol')} market`,
     canActivate: [dropAccountIdGuard, authGuard],
     loadComponent: () =>
       import('./market-page/market-page.component').then((m) => m.MarketPageComponent),
   },
   {
     path: 'dashboard',
+    title: 'Dashboard',
     canActivate: [dropAccountIdGuard, authGuard],
     loadComponent: () =>
       import('./dashboard/dashboard.component').then((m) => m.DashboardComponent),

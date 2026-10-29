@@ -107,7 +107,7 @@ const EXECUTION_FILTERS: readonly { id: ExecutionFilter; label: string }[] = [
         <div class="relative" (keydown.escape)="closeFilters($event)">
           <button
             type="button"
-            class="border-input bg-input/30 hover:bg-muted flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 text-sm transition-colors"
+            class="border-field bg-input/30 hover:bg-muted flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 text-sm transition-colors"
             aria-haspopup="true"
             aria-label="Filters"
             data-testid="transactions-filters"
@@ -241,14 +241,14 @@ const EXECUTION_FILTERS: readonly { id: ExecutionFilter; label: string }[] = [
         </div>
         <input
           type="search"
-          class="border-input bg-input/30 placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-full max-w-[13.75rem] rounded-lg border px-3 text-sm outline-none focus-visible:ring-3"
+          class="border-field bg-input/30 placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-full max-w-[13.75rem] rounded-lg border px-3 text-sm outline-none focus-visible:ring-3"
           placeholder="Filter by symbol"
           aria-label="Filter by symbol"
           [value]="query()"
           (input)="onQuery($event)"
         />
         <div class="flex flex-wrap items-center gap-2" role="group" aria-label="Date range">
-          <label class="date-field border-input bg-input/30 hover:bg-muted relative flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-sm transition-colors">
+          <label class="date-field border-field bg-input/30 hover:bg-muted relative flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-sm transition-colors">
             <ng-icon name="lucideCalendar" class="text-muted-foreground text-[16px]" aria-hidden="true" />
             <input
               type="date"
@@ -261,7 +261,7 @@ const EXECUTION_FILTERS: readonly { id: ExecutionFilter; label: string }[] = [
             />
           </label>
           <span class="text-muted-foreground text-xs">To</span>
-          <label class="date-field border-input bg-input/30 hover:bg-muted relative flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-sm transition-colors">
+          <label class="date-field border-field bg-input/30 hover:bg-muted relative flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-sm transition-colors">
             <ng-icon name="lucideCalendar" class="text-muted-foreground text-[16px]" aria-hidden="true" />
             <input
               type="date"
@@ -277,7 +277,7 @@ const EXECUTION_FILTERS: readonly { id: ExecutionFilter; label: string }[] = [
         <div class="relative ml-auto" (keydown.escape)="closeExport($event)">
           <button
             type="button"
-            class="border-input bg-input/30 hover:bg-muted flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+            class="border-field bg-input/30 hover:bg-muted flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50"
             aria-haspopup="true"
             data-testid="transactions-export"
             [attr.aria-expanded]="exportOpen()"
@@ -457,7 +457,7 @@ const EXECUTION_FILTERS: readonly { id: ExecutionFilter; label: string }[] = [
               >
                 <button
                   type="button"
-                  class="border-input bg-input/30 hover:bg-muted flex size-8 cursor-pointer items-center justify-center rounded-lg border transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                  class="border-field bg-input/30 hover:bg-muted flex size-8 cursor-pointer items-center justify-center rounded-lg border transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                   aria-label="Previous page"
                   data-testid="transactions-prev"
                   [disabled]="currentPage() === 1"
@@ -474,7 +474,7 @@ const EXECUTION_FILTERS: readonly { id: ExecutionFilter; label: string }[] = [
                 </span>
                 <button
                   type="button"
-                  class="border-input bg-input/30 hover:bg-muted flex size-8 cursor-pointer items-center justify-center rounded-lg border transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                  class="border-field bg-input/30 hover:bg-muted flex size-8 cursor-pointer items-center justify-center rounded-lg border transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                   aria-label="Next page"
                   data-testid="transactions-next"
                   [disabled]="currentPage() === pageCount()"

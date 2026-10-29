@@ -51,13 +51,6 @@
             <button
               type="button"
               [class.unread]="isUnread(item)"
-              [attr.aria-label]="
-                item === 'stock'
-                  ? 'This Stock'
-                  : item === 'daily'
-                    ? 'Daily Review'
-                    : 'Portfolio Analysis'
-              "
               [attr.aria-description]="
                 item === 'stock' && forecastReady() ? 'Includes a model forecast' : null
               "
@@ -501,12 +494,11 @@
   class="dua-launcher"
   data-tour="dua"
   type="button"
-  aria-label="Dua insights"
+  [attr.aria-label]="launcherName()"
   [class.waking]="waking()"
   [class.rolling]="rolling()"
   [class.has-pill]="showPill()"
   [attr.aria-expanded]="!session.minimized()"
-  [attr.aria-description]="hasUpdates() ? unreadCount() + ' new insight updates' : null"
   (pointerenter)="hovered.set($event.pointerType === 'mouse')"
   (pointerleave)="hovered.set(false)"
   (focus)="focused.set(launcher.matches(':focus-visible'))"
@@ -525,8 +517,8 @@
     <span class="launcher-pill" aria-hidden="true">Ask Dua</span>
   }
   @if (hasUpdates() && session.minimized()) {
-    <span class="notification-count" [attr.aria-label]="unreadCount() + ' new insight updates'">{{
-      unreadCount()
-    }}</span>
+    <span class="notification-count" aria-hidden="true"
+      >&ngsp;{{ unreadCount() }}</span
+    >
   }
 </button>

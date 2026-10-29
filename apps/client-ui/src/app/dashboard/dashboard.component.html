@@ -39,13 +39,14 @@
         <app-dashboard-header-dropdown
           data-testid="profile-dropdown"
           ariaLabel="Open profile menu"
+          [label]="profileInitials()"
           [open]="openHeaderDropdown() === 'profile'"
           (openChange)="onHeaderDropdownOpenChange('profile', $event)"
           containerClass="shrink-0"
           triggerClass="bg-primary/15 text-primary hover:bg-primary/25 size-9 justify-center rounded-full text-xs font-semibold"
           panelClass="w-48 p-1"
         >
-          <span dropdownTrigger data-testid="profile-initials">{{ profileInitials() }}</span>
+          <span dropdownTrigger data-testid="profile-initials" aria-hidden="true">{{ profileInitials() }}</span>
 
           <div role="menu" aria-label="Profile">
             <button
@@ -495,7 +496,7 @@
                       <button
                         type="button"
                         class="assets-table-grid hover:bg-muted grid w-full cursor-pointer items-center gap-1.5 rounded-lg px-2 py-2.5 text-left text-sm whitespace-nowrap transition-colors"
-                        [attr.aria-label]="'Trade ' + holding.symbol"
+                        aria-haspopup="dialog"
                         [attr.data-testid]="'asset-row-' + holding.symbol"
                         (click)="openOrder(holding.instrument)"
                       >

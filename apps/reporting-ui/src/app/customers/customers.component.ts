@@ -180,7 +180,6 @@ function sortValue(customer: Customer, key: CustomerSortKey): string | number {
                     <a
                       class="row-button customer-grid"
                       [routerLink]="['/customers', customer.userId]"
-                      [attr.aria-label]="'Open ' + customer.name"
                     >
                       <span class="flex min-w-0 items-center gap-2.5">
                         <span

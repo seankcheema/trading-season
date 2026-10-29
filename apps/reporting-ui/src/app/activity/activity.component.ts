@@ -294,7 +294,11 @@ function feedRow(item: FeedItem): FeedRow {
               </span>
             </div>
             @if (feed().length) {
-              <ul class="dash-scroll mt-2 max-h-96 min-h-0 lg:max-h-none lg:flex-1">
+              <ul
+                tabindex="0"
+                aria-label="Live activity"
+                class="dash-scroll mt-2 max-h-96 min-h-0 lg:max-h-none lg:flex-1"
+              >
                 @for (item of feed(); track $index; let last = $last) {
                   <li
                     class="flex items-center gap-3 py-2.5 text-sm"
@@ -328,7 +332,11 @@ function feedRow(item: FeedItem): FeedRow {
                 <span class="text-right">Orders</span>
                 <span class="text-right">Notional</span>
               </div>
-              <ul class="dash-scroll max-h-96 min-h-0 lg:max-h-none lg:flex-1">
+              <ul
+                tabindex="0"
+                aria-label="Most traded"
+                class="dash-scroll max-h-96 min-h-0 lg:max-h-none lg:flex-1"
+              >
                 @for (row of data.mostTraded; track row.symbol) {
                   <li class="dash-table-row traded-grid">
                     <span class="font-medium">{{ row.symbol }}</span>

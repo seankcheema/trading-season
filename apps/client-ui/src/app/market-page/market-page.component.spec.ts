@@ -601,7 +601,7 @@ describe('MarketPageComponent', () => {
     const fixture = await setup();
     const header = fixture.nativeElement.querySelector('.market-nav') as HTMLElement;
     const profile = fixture.nativeElement.querySelector(
-      '[aria-label="Select account"]',
+      '[aria-label^="Select account"]',
     ) as HTMLButtonElement;
 
     expect(getComputedStyle(header).position).toBe('relative');

@@ -17,7 +17,7 @@ const ROWS = orders.length + transfers.length;
 const filled = (order: ScenarioOrder) => order.status === 'FILLED';
 const orderRow = (page: Page, order: ScenarioOrder) =>
   tableRows(page).filter({
-    has: page.getByRole('button', { name: `Open order ${order.orderId}` }),
+    has: page.getByRole('button', { name: new RegExp(`^#${order.orderId}\\b`) }),
   });
 
 async function openOrders(
@@ -33,7 +33,7 @@ test.describe('Orders', () => {
   test('lists every order and every cash transfer', async ({ page, openAsAdmin }) => {
     await openOrders(page, openAsAdmin);
 
-    await expect(page.getByRole('button', { name: /^Open order \d+$/ })).toHaveCount(orders.length);
+    await expect(page.getByRole('button', { name: /^#\d+\b/ })).toHaveCount(orders.length);
     await expect(page.locator('[data-transfer]')).toHaveCount(transfers.length);
   });
 
@@ -246,7 +246,7 @@ test.describe('One order', () => {
     const customer = customerOf(order.accountId);
     await openOrders(page, openAsAdmin);
 
-    await page.getByRole('button', { name: `Open order ${order.orderId}` }).click();
+    await page.getByRole('button', { name: new RegExp(`^#${order.orderId}\\b`) }).click();
 
     await expect(
       dialog(page).getByRole('heading', { name: `Order #${order.orderId}` }),
@@ -277,7 +277,7 @@ test.describe('One order', () => {
     const order = orders.find((o) => o.status === 'REJECTED')!;
     await openOrders(page, openAsAdmin);
 
-    await page.getByRole('button', { name: `Open order ${order.orderId}` }).click();
+    await page.getByRole('button', { name: new RegExp(`^#${order.orderId}\\b`) }).click();
 
     await expect(
       dialog(page).getByRole('heading', { name: `Order #${order.orderId}` }),
@@ -293,7 +293,7 @@ test.describe('One order', () => {
     const buys = orders.filter((o) => o.side === 'BUY').length;
     await expectCount(page, buys, ROWS, 'rows');
 
-    await page.getByRole('button', { name: 'Open order 101' }).click();
+    await page.getByRole('button', { name: /^#101\b/ }).click();
     await expect(dialog(page)).toBeVisible();
     await page.keyboard.press('Escape');
 
@@ -311,7 +311,7 @@ test.describe('One order', () => {
       route.fulfill({ status: 404, json: { error: 'Not found' } }),
     );
 
-    await page.getByRole('button', { name: 'Open order 101' }).click();
+    await page.getByRole('button', { name: /^#101\b/ }).click();
 
     await expect(dialog(page).getByRole('alert')).toContainText("We couldn't load this order.");
   });

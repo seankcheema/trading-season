@@ -125,7 +125,10 @@ describe('OrderTableComponent', () => {
       'filled',
     ]);
     expect(time).toMatch(/^Oct \d{1,2}, \d{1,2}:44:12 [AP]M$/);
-    expect(rows()[0].getAttribute('aria-label')).toBe('Open order 10482');
+    // Named by what the row shows, so the visible text is in the name (WCAG 2.5.3); the
+    // popup says what activating it does.
+    expect(rows()[0].hasAttribute('aria-label')).toBe(false);
+    expect(rows()[0].getAttribute('aria-haspopup')).toBe('dialog');
   });
 
   it('shows a deposit and a withdrawal as cash that moved, with nothing to open', () => {

@@ -128,7 +128,7 @@ test.describe('assets dialog', () => {
     await page.getByTestId('open-assets').click();
     const assets = page.getByRole('dialog', { name: 'Assets' });
 
-    await assets.getByRole('button', { name: 'Trade MSFT' }).click();
+    await assets.getByRole('button', { name: /^MSFT\b/ }).click();
 
     await expect(assets).toBeHidden();
     const order = page.getByRole('dialog', { name: 'New Order' });

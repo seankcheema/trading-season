@@ -89,7 +89,7 @@ for (const viewport of [
       'dua-bubble-pop',
     );
     // Beside the launcher, bottoms nearly level, inside the viewport and over the dialog.
-    const launcher = page.getByRole('button', { name: 'Dua insights', exact: true });
+    const launcher = page.getByRole('button', { name: /^Ask Dua/ });
     const said = (await bubble.boundingBox())!;
     const dua = (await launcher.boundingBox())!;
     expect(said.x + said.width).toBeLessThanOrEqual(dua.x);
