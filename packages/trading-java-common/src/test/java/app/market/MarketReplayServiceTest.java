@@ -471,6 +471,17 @@ class MarketReplayServiceTest {
     }
 
     @Test
+    void advancingDropsAStreamTheContainerHasEndedAndFreesItsClientSlot() {
+        service = new MarketReplayService(repository, Clock.fixed(open, ZoneOffset.UTC), "", 1, 200);
+        // Sending to a finished emitter throws IllegalStateException, as Tomcat does for an errored connection.
+        service.subscribe(null, "client-a", null).complete();
+
+        service.advance();
+
+        assertNotNull(service.subscribe(null, "client-a", null));
+    }
+
+    @Test
     void subscribersReceiveTicksHeartbeatsAndReplayOfMissedEvents() {
         List<MarketModels.Frame> frames = new ArrayList<>();
         for (int second = 0; second < 40; second++) {

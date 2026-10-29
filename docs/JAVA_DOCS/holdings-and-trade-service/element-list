@@ -3,6 +3,7 @@ app.account
 app.auth
 app.cash
 app.config
+app.dua
 app.holding
 app.instrument
 app.market

@@ -206,7 +206,12 @@ public class MarketReplayService {
         return emitter;
     }
 
-    /** Advances every active simulation cursor and publishes the next synchronized batch. */
+    /**
+     * Advances every active simulation cursor and publishes the next synchronized batch.
+     * A stream whose connection has already ended, whether the write fails or the container
+     * rejects it as finished, is dropped and its client slot released without interrupting
+     * delivery to the other streams.
+     */
     @Scheduled(fixedRateString = "${market.replay.tick-millis:1000}")
     public void advance() {
         states.values().forEach(this::advanceState);
@@ -262,13 +267,16 @@ public class MarketReplayService {
             } catch (IOException ex) {
                 remove(state, subscriber);
                 subscriber.emitter.completeWithError(ex);
+            } catch (IllegalStateException ex) {
+                // The container already ended this connection and finishes its cleanup itself.
+                remove(state, subscriber);
             }
         }
         if (event.eventId() % 15 == 0) {
             for (Subscriber subscriber : List.copyOf(state.subscribers)) {
                 try {
                     send(subscriber.emitter, "heartbeat", null, Map.of("serverTimestamp", clock.instant()));
-                } catch (IOException ex) {
+                } catch (IOException | IllegalStateException ex) {
                     remove(state, subscriber);
                 }
             }
